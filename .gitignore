@@ -1,0 +1,12 @@
+.env
+go.sum
+go.work.sum
+# Logs
+*.log
+*.gz
+*.zip
+*.bak
+# Build directories and cache
+/dist/
+/bin/
+/pkg/
