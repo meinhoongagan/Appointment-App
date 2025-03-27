@@ -1,14 +1,13 @@
 package db
 
-// Integration Of Postgres Database
 import (
 	"log"
 	"os"
 
-	"github.com/jinzhu/gorm"
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
 	"github.com/meinhoongagan/appointment-app/models"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 var DB *gorm.DB
@@ -30,29 +29,40 @@ func Init() {
 	}
 
 	// Connect to database using the URL
-	db, err := gorm.Open("postgres", dbURL)
+	db, err := gorm.Open(postgres.Open(dbURL), &gorm.Config{
+		DisableForeignKeyConstraintWhenMigrating: true,
+	})
 	if err != nil {
 		log.Fatal("Failed to connect to database: ", err)
 	}
 
-	// Optional: Configure connection pool settings
-	db.DB().SetMaxIdleConns(10)
-	db.DB().SetMaxOpenConns(100)
+	// Get the underlying SQL DB to configure connection pool
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatal("Failed to get SQL database: ", err)
+	}
+
+	// Configure connection pool settings
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
 
 	DB = db
 
 	// Auto-migrate models
-	// DB.AutoMigrate(
-	// 	&models.User{},
-	// 	&models.Role{},
-	// 	&models.Permission{},
-	// 	&models.Appointment{},
-	// 	&models.Service{},
-	// 	&models.WorkingHours{},
-	// )
+	err = db.AutoMigrate(
+		&models.User{},
+		&models.Role{},
+		&models.Permission{},
+		&models.Appointment{},
+		&models.Service{},
+		&models.WorkingHours{},
+	)
+	if err != nil {
+		log.Fatal("Failed to auto-migrate database: ", err)
+	}
 
-	// Initialize default roles and permissions if they don't exist
-	// initDefaultRolesAndPermissions()
+	// Initialize default roles and permissions
+	initDefaultRolesAndPermissions()
 
 	log.Println("Database connection established successfully")
 }
