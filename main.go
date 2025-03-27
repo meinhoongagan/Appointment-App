@@ -25,9 +25,7 @@ func main() {
 	})
 	routes.SetupAuthRoutes(app)
 	routes.SetupRBACRoutes(app)
-	routes.SetupAppointmentRoutes(app)
 	routes.SetupServiceRoutes(app)
-	routes.SetupWorkingHoursRoutes(app)
 
 	app.Listen(":3000")
 	fmt.Println("Server started on port 3000")

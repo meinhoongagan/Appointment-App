@@ -193,9 +193,15 @@ func GetUserProfile(c *fiber.Ctx) error {
 	userID := claims["id"].(float64)
 
 	var userProfile models.User
-	db.DB.Where("id = ?", uint(userID)).First(&userProfile)
 
-	// Don't send password
+	// Use Preload to load the associated Role
+	if err := db.DB.Preload("Role").Where("id = ?", uint(userID)).First(&userProfile).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "User not found",
+		})
+	}
+
+	// Don't send password in response
 	userProfile.Password = ""
 
 	return c.JSON(userProfile)
