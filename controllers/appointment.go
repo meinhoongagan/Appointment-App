@@ -8,14 +8,6 @@ import (
 )
 
 // GetAllAppointments godoc
-// @Summary Get all appointments
-// @Description Get all appointments
-// @Tags appointments
-// @Accept json
-// @Produce json
-// @Success 200 {array} models.Appointment
-// @Failure 500 {object} utils.ErrorResponse
-// @Router /appointments [get]
 func GetAllAppointments(c *fiber.Ctx) error {
 	var appointments []models.Appointment
 	if err := db.DB.Preload("Service").Preload("Provider").Preload("Customer").Find(&appointments).Error; err != nil {
@@ -28,16 +20,6 @@ func GetAllAppointments(c *fiber.Ctx) error {
 }
 
 // GetAppointment godoc
-// @Summary Get an appointment by ID
-// @Description Get an appointment by ID
-// @Tags appointments
-// @Accept json
-// @Produce json
-// @Param id path int true "Appointment ID"
-// @Success 200 {object} models.Appointment
-// @Failure 404 {object} utils.ErrorResponse
-// @Failure 500 {object} utils.ErrorResponse
-// @Router /appointments/{id} [get]
 func GetAppointment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var appointment models.Appointment
@@ -51,17 +33,6 @@ func GetAppointment(c *fiber.Ctx) error {
 }
 
 // CreateAppointment godoc
-// @Summary Create a new appointment
-// @Description Create a new appointment
-// @Tags appointments
-// @Accept json
-// @Produce json
-// @Param appointment body models.Appointment true "Appointment"
-// @Success 201 {object} models.Appointment
-// @Failure 400 {object} utils.ErrorResponse
-// @Failure 404 {object} utils.ErrorResponse
-// @Failure 500 {object} utils.ErrorResponse
-// @Router /appointments [post]
 func CreateAppointment(c *fiber.Ctx) error {
 	var appointment models.Appointment
 	if err := c.BodyParser(&appointment); err != nil {
@@ -80,18 +51,6 @@ func CreateAppointment(c *fiber.Ctx) error {
 }
 
 // UpdateAppointment godoc
-// @Summary Update an appointment by ID
-// @Description Update an appointment by ID
-// @Tags appointments
-// @Accept json
-// @Produce json
-// @Param id path int true "Appointment ID"
-// @Param appointment body models.Appointment true "Appointment"
-// @Success 200 {object} models.Appointment
-// @Failure 400 {object} utils.ErrorResponse
-// @Failure 404 {object} utils.ErrorResponse
-// @Failure 500 {object} utils.ErrorResponse
-// @Router /appointments/{id} [patch]
 func UpdateAppointment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var appointment models.Appointment
@@ -111,16 +70,6 @@ func UpdateAppointment(c *fiber.Ctx) error {
 }
 
 // DeleteAppointment godoc
-// @Summary Delete an appointment by ID
-// @Description Delete an appointment by ID
-// @Tags appointments
-// @Accept json
-// @Produce json
-// @Param id path int true "Appointment ID"
-// @Success 204
-// @Failure 404 {object} utils.ErrorResponse
-// @Failure 500 {object} utils.ErrorResponse
-// @Router /appointments/{id} [delete]
 func DeleteAppointment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if err := db.DB.Where("id = ?", id).Delete(&models.Appointment{}).Error; err != nil {
