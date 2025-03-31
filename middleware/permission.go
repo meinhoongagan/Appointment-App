@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"fmt"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/meinhoongagan/appointment-app/db"
@@ -14,7 +16,7 @@ func RequirePermission(resource string, action string) fiber.Handler {
 		user := c.Locals("user").(*jwt.Token)
 		claims := user.Claims.(jwt.MapClaims)
 		userID := uint(claims["id"].(float64))
-
+		fmt.Println("User ID from JWT:", userID)
 		// Get user with role and permissions from database
 		var dbUser models.User
 		if err := db.DB.Preload("Role.Permissions").First(&dbUser, userID).Error; err != nil {
@@ -22,7 +24,7 @@ func RequirePermission(resource string, action string) fiber.Handler {
 				"error": "User not found",
 			})
 		}
-
+		fmt.Println("User from DB:", dbUser)
 		// Check if user has required permission
 		hasPermission := false
 		for _, permission := range dbUser.Role.Permissions {
@@ -31,7 +33,8 @@ func RequirePermission(resource string, action string) fiber.Handler {
 				break
 			}
 		}
-
+		fmt.Println("Required permission:", resource, action)
+		fmt.Println("Has permission:", hasPermission)
 		if !hasPermission {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 				"error": "You don't have permission to perform this action",

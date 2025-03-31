@@ -1,12 +1,21 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
 )
 
 type AppointmentStatus string
+
+type Recurrence struct {
+	gorm.Model
+	AppointmentID uint      `json:"appointment_id"`
+	NextRun       time.Time `json:"next_run"`
+	Frequency     string    `json:"frequency"` // "daily", "weekly", "monthly"
+	EndAfter      uint      `json:"end_after"` // Number of occurrences
+}
 
 const (
 	StatusPending   AppointmentStatus = "pending"
@@ -23,7 +32,8 @@ type Appointment struct {
 	EndTime      time.Time         `json:"end_time"`
 	Status       AppointmentStatus `json:"status"`
 	IsRecurring  bool              `json:"is_recurring"`
-	RecurPattern string            `json:"recur_pattern"` // E.g., "weekly", "monthly", "daily"
+	RecurrenceID uint              `json:"recur_pattern_id"`
+	RecurPattern Recurrence        `json:"recur_pattern"` // E.g., "weekly", "monthly", "daily"
 	ServiceID    uint              `json:"service_id"`
 	Service      Service           `json:"service" gorm:"foreignKey:ServiceID"`
 	ProviderID   uint              `json:"provider_id"`
@@ -36,5 +46,75 @@ func (a *Appointment) BeforeCreate(tx *gorm.DB) error {
 	if a.Status == "" {
 		a.Status = StatusPending
 	}
+	return nil
+}
+
+func (a *Appointment) UpdateStatus(tx *gorm.DB, newStatus AppointmentStatus) error {
+	switch a.Status {
+	case StatusPending:
+		if newStatus != StatusConfirmed && newStatus != StatusCanceled {
+			return fmt.Errorf("invalid transition from pending to %s", newStatus)
+		}
+	case StatusConfirmed:
+		if newStatus != StatusCompleted && newStatus != StatusCanceled {
+			return fmt.Errorf("invalid transition from confirmed to %s", newStatus)
+		}
+	case StatusCompleted, StatusCanceled:
+		return fmt.Errorf("no transitions allowed from %s", a.Status)
+	}
+
+	// Update the status
+	a.Status = newStatus
+	if err := tx.Save(a).Error; err != nil {
+		return err
+	}
+
+	// Handle Recurrence after completion
+	if newStatus == StatusCompleted && a.IsRecurring {
+		return a.ScheduleNextRecurrence(tx)
+	}
+
+	return nil
+}
+
+func (a *Appointment) ScheduleNextRecurrence(tx *gorm.DB) error {
+	var nextTime time.Time
+	switch a.RecurPattern.Frequency {
+	case "daily":
+		nextTime = a.StartTime.AddDate(0, 0, 1) // Add 1 day
+	case "weekly":
+		nextTime = a.StartTime.AddDate(0, 0, 7) // Add 7 days
+	case "monthly":
+		nextTime = a.StartTime.AddDate(0, 1, 0) // Add 1 month
+	default:
+		return fmt.Errorf("invalid recurrence frequency: %s", a.RecurPattern.Frequency)
+	}
+
+	// Decrement remaining occurrences if EndAfter is set
+	if a.RecurPattern.EndAfter > 0 {
+		a.RecurPattern.EndAfter--
+		if a.RecurPattern.EndAfter == 0 {
+			return nil // Stop recurrence if no occurrences left
+		}
+	}
+
+	// Create a new appointment with the updated start and end times
+	nextAppointment := Appointment{
+		Title:        a.Title,
+		Description:  a.Description,
+		StartTime:    nextTime,
+		EndTime:      nextTime.Add(a.EndTime.Sub(a.StartTime)),
+		Status:       StatusPending,
+		IsRecurring:  true,
+		RecurPattern: a.RecurPattern,
+		ServiceID:    a.ServiceID,
+		ProviderID:   a.ProviderID,
+		CustomerID:   a.CustomerID,
+	}
+
+	if err := tx.Create(&nextAppointment).Error; err != nil {
+		return fmt.Errorf("failed to create next recurrence: %v", err)
+	}
+
 	return nil
 }

@@ -13,5 +13,6 @@ func SetupAppointmentRoutes(app *fiber.App) {
 	appointment.Get("/:id", controllers.GetAppointment)
 	appointment.Post("/", middleware.Protected(), middleware.RequirePermission("appointments", "create"), controllers.CreateAppointment)
 	appointment.Patch("/:id", middleware.Protected(), middleware.RequirePermission("appointments", "update"), controllers.UpdateAppointment)
+	appointment.Put("/:id/status", middleware.Protected(), middleware.RequirePermission("appointments", "update"), controllers.UpdateAppointmentStatus)
 	appointment.Delete("/:id", middleware.Protected(), middleware.RequirePermission("appointments", "delete"), controllers.DeleteAppointment)
 }

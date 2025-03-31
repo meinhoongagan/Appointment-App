@@ -203,10 +203,113 @@ func UpdateAppointment(c *fiber.Ctx) error {
 	return c.JSON(updatedAppointment)
 }
 
+// UpdateAppointmentStatus godoc
+func UpdateAppointmentStatus(c *fiber.Ctx) error {
+	id := c.Params("id")
+
+	var statusUpdate struct {
+		Status models.AppointmentStatus `json:"status"`
+	}
+
+	// Parse status update request
+	if err := c.BodyParser(&statusUpdate); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(utils.ErrorResponse{
+			Message: "Failed to parse status update request",
+			Error:   err.Error(),
+		})
+	}
+
+	var appointment models.Appointment
+	if err := db.DB.First(&appointment, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
+			Message: "Appointment not found",
+			Error:   err.Error(),
+		})
+	}
+
+	// Validate status transition
+	err := db.DB.Transaction(func(tx *gorm.DB) error {
+		if err := appointment.UpdateStatus(tx, statusUpdate.Status); err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		return c.Status(fiber.StatusConflict).JSON(utils.ErrorResponse{
+			Message: "Invalid status transition or failed to update status",
+			Error:   err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "Appointment status updated successfully",
+		"status":  appointment.Status,
+	})
+}
+
+func (a *Appointment) ScheduleNextRecurrence(tx *gorm.DB) error {
+	var nextTime time.Time
+	switch a.RecurPattern.Frequency {
+	case "daily":
+		nextTime = a.StartTime.AddDate(0, 0, 1) // Add 1 day
+	case "weekly":
+		nextTime = a.StartTime.AddDate(0, 0, 7) // Add 7 days
+	case "monthly":
+		nextTime = a.StartTime.AddDate(0, 1, 0) // Add 1 month
+	default:
+		return fmt.Errorf("invalid recurrence frequency: %s", a.RecurPattern.Frequency)
+	}
+
+	// Decrement remaining occurrences if EndAfter is set
+	if a.RecurPattern.EndAfter > 0 {
+		a.RecurPattern.EndAfter--
+		if a.RecurPattern.EndAfter == 0 {
+			return nil // Stop recurrence if no occurrences left
+		}
+	}
+
+	// Create a new appointment with the updated start and end times
+	nextAppointment := Appointment{
+		Title:        a.Title,
+		Description:  a.Description,
+		StartTime:    nextTime,
+		EndTime:      nextTime.Add(a.EndTime.Sub(a.StartTime)),
+		Status:       StatusPending,
+		IsRecurring:  true,
+		RecurPattern: a.RecurPattern,
+		ServiceID:    a.ServiceID,
+		ProviderID:   a.ProviderID,
+		CustomerID:   a.CustomerID,
+	}
+
+	if err := tx.Create(&nextAppointment).Error; err != nil {
+		return fmt.Errorf("failed to create next recurrence: %v", err)
+	}
+
+	return nil
+}
+
 // DeleteAppointment godoc
 func DeleteAppointment(c *fiber.Ctx) error {
 	id := c.Params("id")
-	if err := db.DB.Where("id = ?", id).Delete(&models.Appointment{}).Error; err != nil {
+	var appointment models.Appointment
+	if err := db.DB.First(&appointment, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
+			Message: "Appointment not found",
+			Error:   err.Error(),
+		})
+	}
+
+	// Prevent deletion of completed or canceled appointments
+	if appointment.Status == models.StatusCompleted || appointment.Status == models.StatusCanceled {
+		return c.Status(fiber.StatusForbidden).JSON(utils.ErrorResponse{
+			Message: "Cannot delete a completed or canceled appointment",
+		})
+	}
+
+	// Delete the appointment
+	if err := db.DB.Delete(&appointment).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
 			Message: "Failed to delete appointment",
 			Error:   err.Error(),
