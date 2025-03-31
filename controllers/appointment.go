@@ -37,7 +37,6 @@ func GetAppointment(c *fiber.Ctx) error {
 }
 
 // CreateAppointment godoc
-// CreateAppointment godoc
 func CreateAppointment(c *fiber.Ctx) error {
 	var appointment models.Appointment
 
@@ -81,8 +80,12 @@ func CreateAppointment(c *fiber.Ctx) error {
 	// Set end time and convert to IST
 	appointment.EndTime = utils.ToIST(appointment.StartTime.Add(duration))
 
-	// Create appointment within transaction
+	// Set status to pending by default
+	appointment.Status = models.StatusPending
+
+	// Create appointment and recurrence in a transaction
 	err = db.DB.Transaction(func(tx *gorm.DB) error {
+		// Check availability again to prevent conflicts
 		available, err := utils.CheckAvailability(appointment.ProviderID, appointment.StartTime, duration)
 		if err != nil {
 			return err
@@ -91,9 +94,31 @@ func CreateAppointment(c *fiber.Ctx) error {
 			return fmt.Errorf("time slot not available")
 		}
 
+		// Create the appointment
 		if err := tx.Create(&appointment).Error; err != nil {
 			return err
 		}
+
+		// Handle Recurrence if `is_recurring` is true
+		if appointment.IsRecurring {
+			recurrence := models.Recurrence{
+				AppointmentID: appointment.ID,
+				NextRun:       appointment.StartTime,
+				Frequency:     appointment.RecurPattern.Frequency,
+				EndAfter:      appointment.RecurPattern.EndAfter,
+			}
+
+			// Create the recurrence
+			if err := tx.Create(&recurrence).Error; err != nil {
+				return fmt.Errorf("failed to create recurrence: %v", err)
+			}
+
+			// Link recurrence to the appointment
+			if err := tx.Model(&appointment).Update("recurrence_id", recurrence.ID).Error; err != nil {
+				return fmt.Errorf("failed to update appointment with recurrence_id: %v", err)
+			}
+		}
+
 		return nil
 	})
 
@@ -185,6 +210,8 @@ func UpdateAppointment(c *fiber.Ctx) error {
 		if updatedAppointment.CustomerID == 0 {
 			updatedAppointment.CustomerID = existingAppointment.CustomerID
 		}
+		// Do Not Change Status
+		updatedAppointment.Status = existingAppointment.Status
 
 		// Perform the update
 		if err := tx.Model(&existingAppointment).Where("id = ?", id).Updates(updatedAppointment).Error; err != nil {
@@ -246,48 +273,6 @@ func UpdateAppointmentStatus(c *fiber.Ctx) error {
 		"message": "Appointment status updated successfully",
 		"status":  appointment.Status,
 	})
-}
-
-func (a *Appointment) ScheduleNextRecurrence(tx *gorm.DB) error {
-	var nextTime time.Time
-	switch a.RecurPattern.Frequency {
-	case "daily":
-		nextTime = a.StartTime.AddDate(0, 0, 1) // Add 1 day
-	case "weekly":
-		nextTime = a.StartTime.AddDate(0, 0, 7) // Add 7 days
-	case "monthly":
-		nextTime = a.StartTime.AddDate(0, 1, 0) // Add 1 month
-	default:
-		return fmt.Errorf("invalid recurrence frequency: %s", a.RecurPattern.Frequency)
-	}
-
-	// Decrement remaining occurrences if EndAfter is set
-	if a.RecurPattern.EndAfter > 0 {
-		a.RecurPattern.EndAfter--
-		if a.RecurPattern.EndAfter == 0 {
-			return nil // Stop recurrence if no occurrences left
-		}
-	}
-
-	// Create a new appointment with the updated start and end times
-	nextAppointment := Appointment{
-		Title:        a.Title,
-		Description:  a.Description,
-		StartTime:    nextTime,
-		EndTime:      nextTime.Add(a.EndTime.Sub(a.StartTime)),
-		Status:       StatusPending,
-		IsRecurring:  true,
-		RecurPattern: a.RecurPattern,
-		ServiceID:    a.ServiceID,
-		ProviderID:   a.ProviderID,
-		CustomerID:   a.CustomerID,
-	}
-
-	if err := tx.Create(&nextAppointment).Error; err != nil {
-		return fmt.Errorf("failed to create next recurrence: %v", err)
-	}
-
-	return nil
 }
 
 // DeleteAppointment godoc

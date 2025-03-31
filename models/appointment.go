@@ -71,6 +71,13 @@ func (a *Appointment) UpdateStatus(tx *gorm.DB, newStatus AppointmentStatus) err
 
 	// Handle Recurrence after completion
 	if newStatus == StatusCompleted && a.IsRecurring {
+		fmt.Println("Scheduling next recurrence...", a.RecurPattern)
+
+		// Preload Recurrence Pattern before scheduling next occurrence
+		if err := tx.Preload("RecurPattern").First(&a, a.ID).Error; err != nil {
+			return fmt.Errorf("failed to load recurrence pattern: %v", err)
+		}
+
 		return a.ScheduleNextRecurrence(tx)
 	}
 
@@ -79,6 +86,13 @@ func (a *Appointment) UpdateStatus(tx *gorm.DB, newStatus AppointmentStatus) err
 
 func (a *Appointment) ScheduleNextRecurrence(tx *gorm.DB) error {
 	var nextTime time.Time
+
+	// Check if recurrence exists
+	if a.RecurPattern.ID == 0 {
+		return fmt.Errorf("no recurrence pattern found for appointment")
+	}
+	fmt.Println("Recurrence pattern found:", a.RecurPattern)
+	// Determine next occurrence based on recurrence frequency
 	switch a.RecurPattern.Frequency {
 	case "daily":
 		nextTime = a.StartTime.AddDate(0, 0, 1) // Add 1 day
@@ -90,15 +104,21 @@ func (a *Appointment) ScheduleNextRecurrence(tx *gorm.DB) error {
 		return fmt.Errorf("invalid recurrence frequency: %s", a.RecurPattern.Frequency)
 	}
 
-	// Decrement remaining occurrences if EndAfter is set
+	fmt.Println("Next occurrence time:", nextTime)
+
+	// Decrement remaining occurrences if EndAfter > 0
 	if a.RecurPattern.EndAfter > 0 {
 		a.RecurPattern.EndAfter--
 		if a.RecurPattern.EndAfter == 0 {
-			return nil // Stop recurrence if no occurrences left
+			return nil // Stop recurrence if occurrences are exhausted
+		}
+		// Update the Recurrence with decremented EndAfter
+		if err := tx.Save(&a.RecurPattern).Error; err != nil {
+			return fmt.Errorf("failed to update recurrence: %v", err)
 		}
 	}
-
-	// Create a new appointment with the updated start and end times
+	fmt.Println("Updated recurrence pattern:", a.RecurPattern)
+	// Create the next recurring appointment
 	nextAppointment := Appointment{
 		Title:        a.Title,
 		Description:  a.Description,
@@ -106,12 +126,13 @@ func (a *Appointment) ScheduleNextRecurrence(tx *gorm.DB) error {
 		EndTime:      nextTime.Add(a.EndTime.Sub(a.StartTime)),
 		Status:       StatusPending,
 		IsRecurring:  true,
-		RecurPattern: a.RecurPattern,
+		RecurrenceID: a.RecurPattern.ID, // ✅ Set recurrence ID correctly
 		ServiceID:    a.ServiceID,
 		ProviderID:   a.ProviderID,
 		CustomerID:   a.CustomerID,
 	}
-
+	fmt.Println("Next appointment to be created:", nextAppointment)
+	// Save the new appointment
 	if err := tx.Create(&nextAppointment).Error; err != nil {
 		return fmt.Errorf("failed to create next recurrence: %v", err)
 	}

@@ -18,15 +18,15 @@ func CheckAvailability(providerID uint, startTime time.Time, duration time.Durat
 	err := db.DB.Raw(`
 		SELECT *
 		FROM appointments
-		WHERE provider_id = ? AND (
+		WHERE provider_id = ? AND status != ? AND (
 			(start_time < ? AND end_time > ?) OR
 			(start_time >= ? AND start_time < ?)
 		)
 		FOR UPDATE
-	`, providerID, endTimeIST, startTimeIST, startTimeIST, endTimeIST).
+	`, providerID, models.StatusCompleted, endTimeIST, startTimeIST, startTimeIST, endTimeIST).
 		First(&existingAppointment).Error
 
-	// If there is a conflicting appointment, return false
+	// If there is a conflicting appointment (excluding completed), return false
 	if err == nil && existingAppointment.ID != 0 {
 		return false, nil
 	}

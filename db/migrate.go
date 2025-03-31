@@ -7,7 +7,7 @@ import (
 	"github.com/meinhoongagan/appointment-app/models"
 )
 
-func migrate() {
+func Migrate() {
 	// Initialize DB connection
 	Init()
 
