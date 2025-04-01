@@ -24,4 +24,6 @@ type WorkingHours struct {
 	StartTime  string    `json:"start_time"` // Format "HH:MM" in 24h
 	EndTime    string    `json:"end_time"`   // Format "HH:MM" in 24h
 	IsWorkDay  bool      `json:"is_work_day" gorm:"default:true"`
+	BreakStart *string   `json:"break_start"` // Optional break start time
+	BreakEnd   *string   `json:"break_end"`   // Optional break end time
 }

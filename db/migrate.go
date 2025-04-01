@@ -8,10 +8,8 @@ import (
 )
 
 func Migrate() {
-	// Initialize DB connection
-	Init()
+	// Init()
 
-	// Run AutoMigrate only when explicitly called
 	err := DB.AutoMigrate(
 		&models.User{},
 		&models.Role{},

@@ -14,5 +14,5 @@ type Service struct {
 	Cost        float64       `json:"cost"`
 	BufferTime  time.Duration `json:"buffer_time"` // Time between appointments
 	ProviderID  uint          `json:"provider_id"`
-	Provider    User         `json:"provider" gorm:"foreignKey:ProviderID"`
+	Provider    User          `json:"provider" gorm:"foreignKey:ProviderID"`
 }

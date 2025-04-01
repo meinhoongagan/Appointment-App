@@ -63,6 +63,20 @@ func CreateAppointment(c *fiber.Ctx) error {
 	// Convert StartTime to IST before checking availability
 	appointment.StartTime = utils.ToIST(appointment.StartTime)
 
+	// Check if the appointment falls within the provider's working hours
+	isWorkingHour, err := utils.CheckWorkingDayAndHours(appointment.ProviderID, appointment.StartTime)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+			Message: "Error checking working hours",
+			Error:   err.Error(),
+		})
+	}
+	if !isWorkingHour {
+		return c.Status(fiber.StatusConflict).JSON(utils.ErrorResponse{
+			Message: "Appointment is outside working hours or during break",
+		})
+	}
+
 	// Check for availability
 	available, err := utils.CheckAvailability(appointment.ProviderID, appointment.StartTime, duration)
 	if err != nil {

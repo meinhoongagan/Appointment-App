@@ -33,15 +33,14 @@ func Init() {
 	if err != nil {
 		log.Fatal("Failed to connect to database: ", err)
 	}
-	
+
 	// Initialize default roles and permissions
 	// initDefaultRolesAndPermissions()
 
 	DB = db
+	Migrate()
 	log.Println("✅ Database connection established successfully!")
 }
-
-
 
 // func initDefaultRolesAndPermissions() {
 // 	// Default roles
