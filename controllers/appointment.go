@@ -47,7 +47,7 @@ func CreateAppointment(c *fiber.Ctx) error {
 			Error:   err.Error(),
 		})
 	}
-
+	fmt.Println("Parsed appointment:", appointment)
 	// Get the service to calculate duration
 	var service models.Service
 	if err := db.DB.First(&service, appointment.ServiceID).Error; err != nil {
@@ -56,13 +56,13 @@ func CreateAppointment(c *fiber.Ctx) error {
 			Error:   err.Error(),
 		})
 	}
-
+	fmt.Println("Fetched service:", service)
 	// Get duration directly from service
 	duration := service.Duration
 
 	// Convert StartTime to IST before checking availability
 	appointment.StartTime = utils.ToIST(appointment.StartTime)
-
+	fmt.Println("Converted StartTime to IST:", appointment.StartTime)
 	// Check if the appointment falls within the provider's working hours
 	isWorkingHour, err := utils.CheckWorkingDayAndHours(appointment.ProviderID, appointment.StartTime)
 	if err != nil {
@@ -71,11 +71,14 @@ func CreateAppointment(c *fiber.Ctx) error {
 			Error:   err.Error(),
 		})
 	}
+	// Check if the appointment is during break time
+	fmt.Println("Checking break time...")
 	if !isWorkingHour {
 		return c.Status(fiber.StatusConflict).JSON(utils.ErrorResponse{
 			Message: "Appointment is outside working hours or during break",
 		})
 	}
+	fmt.Println("Checked break time successfully")
 
 	// Check for availability
 	available, err := utils.CheckAvailability(appointment.ProviderID, appointment.StartTime, duration)
@@ -96,6 +99,8 @@ func CreateAppointment(c *fiber.Ctx) error {
 
 	// Set status to pending by default
 	appointment.Status = models.StatusPending
+
+	fmt.Println("Setting status to pending:", appointment.Status)
 
 	// Create appointment and recurrence in a transaction
 	err = db.DB.Transaction(func(tx *gorm.DB) error {
@@ -135,7 +140,7 @@ func CreateAppointment(c *fiber.Ctx) error {
 
 		return nil
 	})
-
+	fmt.Println("Transaction completed successfully")
 	if err != nil {
 		return c.Status(fiber.StatusConflict).JSON(utils.ErrorResponse{
 			Message: "Time slot not available or failed to create appointment",

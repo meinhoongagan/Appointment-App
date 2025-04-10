@@ -17,53 +17,59 @@ func CheckWorkingDayAndHours(providerID uint, appointmentStart time.Time) (bool,
 		return false, fmt.Errorf("provider working hours not found")
 	}
 
-	// Get the day of the week for the appointment (0 for Sunday, 1 for Monday, ... 6 - Saturday)
-	appointmentDay := int(appointmentStart.Weekday())
+	// Map Go's Weekday (Sunday=0) to your DB's format (Monday=0)
+	dbDayOfWeek := (int(appointmentStart.Weekday()) + 6) % 7
 
-	// Check if the appointment falls within the provider's working days
 	var workingHoursForTheDay models.WorkingHours
 	for _, wh := range providerWorkingHours {
-		if int(wh.DayOfWeek) == appointmentDay && wh.IsWorkDay {
+		if int(wh.DayOfWeek) == dbDayOfWeek && wh.IsWorkDay {
 			workingHoursForTheDay = wh
 			break
 		}
 	}
-	// If no working hours found for the day
 	if reflect.DeepEqual(workingHoursForTheDay, models.WorkingHours{}) {
-		return false, nil // Appointment is outside working days
+		return false, nil
 	}
 
-	// Convert start and end times to time.Time for comparison
+	// Convert DB time strings to time.Time on the same date as the appointment
+	location := appointmentStart.Location()
 	layout := "15:04"
-	startTime, err := time.Parse(layout, workingHoursForTheDay.StartTime)
+
+	buildTime := func(t string) (time.Time, error) {
+		parsed, err := time.ParseInLocation(layout, t, location)
+		if err != nil {
+			return time.Time{}, err
+		}
+		return time.Date(appointmentStart.Year(), appointmentStart.Month(), appointmentStart.Day(),
+			parsed.Hour(), parsed.Minute(), 0, 0, location), nil
+	}
+
+	startTime, err := buildTime(workingHoursForTheDay.StartTime)
 	if err != nil {
 		return false, fmt.Errorf("invalid start time format")
 	}
-
-	endTime, err := time.Parse(layout, workingHoursForTheDay.EndTime)
+	endTime, err := buildTime(workingHoursForTheDay.EndTime)
 	if err != nil {
 		return false, fmt.Errorf("invalid end time format")
 	}
 
-	// Check if the appointment start time falls within working hours
+	// Check if the appointment time is within working hours
 	if appointmentStart.Before(startTime) || appointmentStart.After(endTime) {
-		return false, nil // Appointment is outside working hours
+		return false, nil
 	}
 
-	// Check for break periods if they exist
+	// Handle break times
 	if workingHoursForTheDay.BreakStart != nil && workingHoursForTheDay.BreakEnd != nil {
-		breakStart, err := time.Parse(layout, *workingHoursForTheDay.BreakStart)
+		breakStart, err := buildTime(*workingHoursForTheDay.BreakStart)
 		if err != nil {
 			return false, fmt.Errorf("invalid break start time format")
 		}
-		breakEnd, err := time.Parse(layout, *workingHoursForTheDay.BreakEnd)
+		breakEnd, err := buildTime(*workingHoursForTheDay.BreakEnd)
 		if err != nil {
 			return false, fmt.Errorf("invalid break end time format")
 		}
-
-		// If appointment falls during break, it's invalid
 		if appointmentStart.After(breakStart) && appointmentStart.Before(breakEnd) {
-			return false, nil // Appointment is within break time
+			return false, nil
 		}
 	}
 
