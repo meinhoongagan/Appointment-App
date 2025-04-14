@@ -1,5 +1,4 @@
 .env
-go.sum
 go.work.sum
 # Logs
 *.log
