@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -30,6 +31,29 @@ func GetService(c *fiber.Ctx) error {
 	var service models.Service
 	db.DB.Find(&service, id)
 	return c.JSON(service)
+}
+
+// GetMyServices returns all services of the authenticated provider
+func GetMyServices(c *fiber.Ctx) error {
+	userIDVal := c.Locals("userID")
+	fmt.Println("User ID from locals:", userIDVal)
+	userID, ok := userIDVal.(uint)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Invalid user ID",
+		})
+	}
+
+	var services []models.Service
+	if err := db.DB.Preload("Provider.Role").
+		Where("provider_id = ?", userID).
+		Find(&services).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch services",
+		})
+	}
+
+	return c.JSON(services)
 }
 
 func CreateService(c *fiber.Ctx) error {

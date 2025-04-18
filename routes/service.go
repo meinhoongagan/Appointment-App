@@ -10,6 +10,7 @@ func SetupServiceRoutes(app *fiber.App) {
 	service := app.Group("provider/services")
 	service.Get("/", services.GetAllServices)
 	service.Get("/:id", services.GetService)
+	service.Get("/get-provider/service", middleware.Protected(), services.GetMyServices)
 	service.Post("/", middleware.Protected(), middleware.RequirePermission("services", "create"), services.CreateService)
 	service.Patch("/:id", middleware.Protected(), middleware.RequirePermission("services", "update"), services.UpdateService)
 	service.Delete("/:id", middleware.Protected(), middleware.RequirePermission("services", "delete"), services.DeleteService)
@@ -41,5 +42,27 @@ func SetupServiceRoutes(app *fiber.App) {
 	// Appointment management
 	providerAppointments.Patch("/:id/status", middleware.RequirePermission("services", "update"), services.UpdateAppointmentStatus)
 	providerAppointments.Patch("/:id/reschedule", middleware.RequirePermission("services", "update"), services.RescheduleAppointment)
+
+	//_____________________________________________________________________
+	profile := app.Group("/provider/profile", middleware.Protected())
+	profile.Get("/", services.GetProviderProfile)
+	profile.Patch("/", services.UpdateProviderProfile)
+
+	// Business details
+	profile.Get("/business", services.GetBusinessDetails)
+	profile.Patch("/business", services.UpdateBusinessDetails)
+
+	// Settings
+	profile.Get("/settings", services.GetProviderSettings)
+	profile.Patch("/settings", services.UpdateProviderSettings)
+
+	// Working hours
+	profile.Get("/working-hours", services.GetWorkingHours)
+	profile.Patch("/working-hours", services.UpdateWorkingHours)
+
+	// Time off
+	profile.Get("/time-off", services.GetTimeOff)
+	profile.Post("/time-off", services.AddTimeOff)
+	profile.Delete("/time-off/:id", services.DeleteTimeOff)
 
 }

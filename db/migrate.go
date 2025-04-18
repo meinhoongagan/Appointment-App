@@ -18,6 +18,9 @@ func Migrate() {
 		&models.Appointment{},
 		&models.Service{},
 		&models.WorkingHours{},
+		&models.TimeOff{},
+		&models.BusinessDetails{},
+		&models.ProviderSettings{},
 	)
 	if err != nil {
 		log.Fatal("Failed to run migrations: ", err)
