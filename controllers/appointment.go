@@ -249,51 +249,6 @@ func UpdateAppointment(c *fiber.Ctx) error {
 	return c.JSON(updatedAppointment)
 }
 
-// UpdateAppointmentStatus godoc
-func UpdateAppointmentStatus(c *fiber.Ctx) error {
-	id := c.Params("id")
-
-	var statusUpdate struct {
-		Status models.AppointmentStatus `json:"status"`
-	}
-
-	// Parse status update request
-	if err := c.BodyParser(&statusUpdate); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(utils.ErrorResponse{
-			Message: "Failed to parse status update request",
-			Error:   err.Error(),
-		})
-	}
-
-	var appointment models.Appointment
-	if err := db.DB.First(&appointment, id).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
-			Message: "Appointment not found",
-			Error:   err.Error(),
-		})
-	}
-
-	// Validate status transition
-	err := db.DB.Transaction(func(tx *gorm.DB) error {
-		if err := appointment.UpdateStatus(tx, statusUpdate.Status); err != nil {
-			return err
-		}
-		return nil
-	})
-
-	if err != nil {
-		return c.Status(fiber.StatusConflict).JSON(utils.ErrorResponse{
-			Message: "Invalid status transition or failed to update status",
-			Error:   err.Error(),
-		})
-	}
-
-	return c.JSON(fiber.Map{
-		"message": "Appointment status updated successfully",
-		"status":  appointment.Status,
-	})
-}
-
 // DeleteAppointment godoc
 func DeleteAppointment(c *fiber.Ctx) error {
 	id := c.Params("id")

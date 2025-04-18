@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -126,12 +127,15 @@ func Login(c *fiber.Ctx) error {
 		})
 	}
 
-	role := models.Role{}
-	if err := db.DB.First(&role, user.RoleID).Error; err != nil {
+	//Find Role_id From User Table
+	var role models.Role
+	if err := db.DB.Where("id = ?", user.RoleID).First(&role).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to fetch role",
+			"error": "Failed to find user role",
 		})
 	}
+
+	fmt.Println("User Role ID:", role.ID)
 
 	// Create access token
 	claims := jwt.MapClaims{
@@ -139,7 +143,7 @@ func Login(c *fiber.Ctx) error {
 		"email":   user.Email,
 		"exp":     time.Now().Add(time.Hour * 24).Unix(), // 24 hour expiration
 		"role":    role,
-		"role_id": user.RoleID,
+		"role_id": role.ID,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -179,8 +183,8 @@ func Login(c *fiber.Ctx) error {
 			"id":      user.ID,
 			"name":    user.Name,
 			"email":   user.Email,
-			"role":    user.Role.Name,
-			"role_id": user.Role.ID,
+			"role":    role,
+			"role_id": role.ID,
 		},
 	})
 }
