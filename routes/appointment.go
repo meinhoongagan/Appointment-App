@@ -8,7 +8,7 @@ import (
 
 // SetupAppointmentRoutes configures all appointment related routes
 func SetupAppointmentRoutes(app *fiber.App) {
-	appointment := app.Group("/appointments",middleware.Protected())
+	appointment := app.Group("/appointments", middleware.Protected())
 	appointment.Get("/", consumer.GetAllAppointments)
 	appointment.Get("/:id", consumer.GetAppointment)
 	appointment.Post("/", middleware.Protected(), middleware.RequirePermission("appointments", "create"), consumer.CreateAppointment)
@@ -17,8 +17,8 @@ func SetupAppointmentRoutes(app *fiber.App) {
 
 	//_______________________________________________________________________________
 	//Provider appointments
-	providers := app.Group("/providers",middleware.Protected())
-	
+	providers := app.Group("/providers", middleware.Protected())
+
 	providers.Get("/", consumer.GetAllProviders)
 	providers.Get("/:id", consumer.GetProviderDetails)
 	providers.Get("/:id/services", consumer.GetProviderServices)
@@ -26,4 +26,17 @@ func SetupAppointmentRoutes(app *fiber.App) {
 	providers.Get("/category/:categoryId", consumer.GetProvidersByCategory)
 	providers.Get("/featured", consumer.GetFeaturedProviders)
 	providers.Get("/nearby", consumer.GetNearbyProviders)
+
+	//Reviews________________________________________________________________
+	reviewRoutes := app.Group("/reviews", middleware.Protected())
+
+	reviewRoutes.Post("/", consumer.CreateReview)
+
+	app.Get("/providers/:id/reviews", consumer.GetProviderReviews)
+
+	reviewRoutes.Put("/:id", consumer.UpdateReview)
+
+	reviewRoutes.Delete("/:id", consumer.DeleteReview)
+
+	app.Get("/providers/:id/review-stats", consumer.GetProviderReviewStats)
 }
