@@ -16,20 +16,32 @@ func GetAllServices(c *fiber.Ctx) error {
 
 	// Preload Provider and its Role properly
 	if err := db.DB.Debug().
-		Preload("Provider.Role"). // Preload Role nested inside Provider
+		Preload("Provider.Role").
 		Find(&services).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
 
+	// Log services for debugging
+	fmt.Printf("Fetched all services: %+v\n", services)
+
 	return c.JSON(services)
 }
 
 func GetService(c *fiber.Ctx) error {
-	id := c.Params("id")
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid service ID",
+		})
+	}
 	var service models.Service
-	db.DB.Find(&service, id)
+	if err := db.DB.Preload("Provider.Role").First(&service, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Service not found",
+		})
+	}
 	return c.JSON(service)
 }
 
@@ -53,32 +65,53 @@ func GetMyServices(c *fiber.Ctx) error {
 		})
 	}
 
+	// Log services for debugging
+	fmt.Printf("Fetched services for user %d: %+v\n", userID, services)
+
 	return c.JSON(services)
 }
 
 func CreateService(c *fiber.Ctx) error {
-	service := new(models.Service)
-	if err := c.BodyParser(service); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
+	// Extract userID from JWT
+	userID, ok := c.Locals("userID").(uint)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Invalid user ID in token",
 		})
 	}
 
-	// Find the provider first
+	// Verify role
+	role, ok := c.Locals("role").(string)
+	if !ok || role != "provider" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Only providers can create services",
+		})
+	}
+
+	// Parse request body into Service struct
+	service := new(models.Service)
+	if err := c.BodyParser(service); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body: " + err.Error(),
+		})
+	}
+
+	// Find the provider
 	var provider models.User
-	if err := db.DB.Where("id = ?", service.ProviderID).First(&provider).Error; err != nil {
+	if err := db.DB.Where("id = ?", userID).First(&provider).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Provider not found",
 		})
 	}
 
-	// Set the provider
+	// Set ProviderID and Provider from JWT userID
+	service.ProviderID = userID
 	service.Provider = provider
 
 	// Create the service
 	if err := db.DB.Create(service).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to create service",
+			"error": "Failed to create service: " + err.Error(),
 		})
 	}
 
@@ -95,6 +128,14 @@ func UpdateService(c *fiber.Ctx) error {
 		})
 	}
 
+	// Extract userID from JWT
+	userID, ok := c.Locals("userID").(uint)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Invalid user ID in token",
+		})
+	}
+
 	// Find existing service
 	var existingService models.Service
 	if err := db.DB.First(&existingService, id).Error; err != nil {
@@ -103,11 +144,18 @@ func UpdateService(c *fiber.Ctx) error {
 		})
 	}
 
+	// Verify the service belongs to the authenticated provider
+	if existingService.ProviderID != userID {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "You do not have permission to update this service",
+		})
+	}
+
 	// Create a map to store update data
 	updateData := make(map[string]interface{})
 	if err := c.BodyParser(&updateData); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
+			"error": "Invalid request body: " + err.Error(),
 		})
 	}
 
@@ -124,7 +172,10 @@ func UpdateService(c *fiber.Ctx) error {
 			case float64:
 				return time.Duration(val)
 			case string:
-				duration, _ := time.ParseDuration(val)
+				duration, err := time.ParseDuration(val)
+				if err != nil {
+					return time.Duration(0)
+				}
 				return duration
 			default:
 				return v
@@ -135,7 +186,10 @@ func UpdateService(c *fiber.Ctx) error {
 			case float64:
 				return time.Duration(val)
 			case string:
-				duration, _ := time.ParseDuration(val)
+				duration, err := time.ParseDuration(val)
+				if err != nil {
+					return time.Duration(0)
+				}
 				return duration
 			default:
 				return v
@@ -146,7 +200,10 @@ func UpdateService(c *fiber.Ctx) error {
 			case float64:
 				return val
 			case string:
-				cost, _ := strconv.ParseFloat(val, 64)
+				cost, err := strconv.ParseFloat(val, 64)
+				if err != nil {
+					return 0.0
+				}
 				return cost
 			default:
 				return v
@@ -169,15 +226,15 @@ func UpdateService(c *fiber.Ctx) error {
 	if len(updateMap) > 0 {
 		if err := db.DB.Model(&existingService).Updates(updateMap).Error; err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "Failed to update service",
+				"error": "Failed to update service: " + err.Error(),
 			})
 		}
 	}
 
-	// Retrieve the updated service
-	if err := db.DB.First(&existingService, id).Error; err != nil {
+	// Retrieve the updated service with preloaded Provider
+	if err := db.DB.Preload("Provider.Role").First(&existingService, id).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to retrieve updated service",
+			"error": "Failed to retrieve updated service: " + err.Error(),
 		})
 	}
 
@@ -186,13 +243,43 @@ func UpdateService(c *fiber.Ctx) error {
 
 // DeleteService deletes a service
 func DeleteService(c *fiber.Ctx) error {
-	id := c.Params("id")
+	// Parse service ID from URL parameter
+	id, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid service ID",
+		})
+	}
+
+	// Extract userID from JWT
+	userID, ok := c.Locals("userID").(uint)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Invalid user ID in token",
+		})
+	}
+
+	// Find the service
 	var service models.Service
-	if db.DB.First(&service, id).RowsAffected == 0 {
+	if err := db.DB.First(&service, id).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Service not found",
 		})
 	}
-	db.DB.Delete(&service)
+
+	// Verify the service belongs to the authenticated provider
+	if service.ProviderID != userID {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "You do not have permission to delete this service",
+		})
+	}
+
+	// Delete the service
+	if err := db.DB.Delete(&service).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to delete service: " + err.Error(),
+		})
+	}
+
 	return c.SendStatus(fiber.StatusNoContent)
 }
