@@ -11,6 +11,7 @@ func SetupAppointmentRoutes(app *fiber.App) {
 	appointment := app.Group("/appointments", middleware.Protected())
 	appointment.Get("/", consumer.GetAllAppointments)
 	appointment.Get("/:id", consumer.GetAppointment)
+	appointment.Get("/service/:id", consumer.GetServiceDetails)
 	appointment.Post("/", middleware.Protected(), middleware.RequirePermission("appointments", "create"), consumer.CreateAppointment)
 	appointment.Patch("/:id", middleware.Protected(), middleware.RequirePermission("appointments", "update"), consumer.UpdateAppointment)
 	appointment.Delete("/:id", middleware.Protected(), middleware.RequirePermission("appointments", "delete"), consumer.DeleteAppointment)

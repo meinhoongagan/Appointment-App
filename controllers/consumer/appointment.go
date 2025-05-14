@@ -36,6 +36,27 @@ func GetAppointment(c *fiber.Ctx) error {
 	return c.JSON(appointment)
 }
 
+// GetServiceDetails returns details for a specific service
+func GetServiceDetails(c *fiber.Ctx) error {
+	id := c.Params("id")
+
+	var service models.Service
+	if err := db.DB.First(&service, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Service not found",
+		})
+	}
+
+	// Optionally preload provider or category
+	if err := db.DB.Preload("Provider").Preload("Category").First(&service, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Service not found",
+		})
+	}
+
+	return c.JSON(service)
+}
+
 // CreateAppointment godoc
 func CreateAppointment(c *fiber.Ctx) error {
 	var appointment models.Appointment
