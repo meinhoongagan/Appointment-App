@@ -10,6 +10,67 @@ import (
 	"github.com/meinhoongagan/appointment-app/utils"
 )
 
+func GetAllAppointments(c *fiber.Ctx) error {
+	appointmentStatus := c.Query("status")
+	var appointments []models.Appointment
+	//Get appointments for service provider take provider id from c.Locals("userID")
+	userID, ok := c.Locals("userID").(uint)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "User ID not found in context",
+		})
+	}
+	// Get user role
+	role, ok := c.Locals("role").(string)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "User role not found in context",
+		})
+	}
+	// Verify that the user is a provider
+	if role != "provider" && role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Access denied. Only providers can access this endpoint.",
+		})
+	}
+	query := db.DB.
+		Preload("Service").
+		Preload("Provider").
+		Preload("Customer").
+		Where("provider_id = ?", userID)
+
+	if appointmentStatus != "" {
+		query = query.Where("status = ?", appointmentStatus)
+	}
+
+	if err := query.Find(&appointments).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+	return c.JSON(appointments)
+}
+
+func GetAppointmentDetails(c *fiber.Ctx) error {
+	appointmentID, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(utils.ErrorResponse{
+			Message: "Invalid appointment ID",
+			Error:   err.Error(),
+		})
+	}
+
+	var appointment models.Appointment
+	if err := db.DB.Preload("Service").Preload("Provider").Preload("Customer").First(&appointment, appointmentID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
+			Message: "Appointment not found",
+			Error:   err.Error(),
+		})
+	}
+
+	return c.JSON(appointment)
+}
+
 // GetProviderUpcomingAppointments returns upcoming appointments for the logged-in provider
 func GetProviderUpcomingAppointments(c *fiber.Ctx) error {
 	// Get the authenticated user ID from context

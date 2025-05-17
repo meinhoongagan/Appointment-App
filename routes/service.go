@@ -33,6 +33,12 @@ func SetupServiceRoutes(app *fiber.App) {
 	//_______________________________________________________________________________
 	providerAppointments := app.Group("/provider/appointments", middleware.Protected())
 
+	// All appointments
+	providerAppointments.Get("/", services.GetAllAppointments)
+
+	// Appointment details
+	providerAppointments.Get("/:id", services.GetAppointmentDetails)
+
 	// Upcoming appointments
 	providerAppointments.Get("/upcoming", services.GetProviderUpcomingAppointments)
 
