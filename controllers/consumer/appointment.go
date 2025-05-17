@@ -168,6 +168,75 @@ func CreateAppointment(c *fiber.Ctx) error {
 			Error:   err.Error(),
 		})
 	}
+	// Find the customer and provider to send emails
+	var customer models.User
+	if err := db.DB.First(&customer, appointment.CustomerID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
+			Message: "Customer not found",
+			Error:   err.Error(),
+		})
+	}
+	var provider models.User
+	if err := db.DB.First(&provider, appointment.ProviderID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
+			Message: "Provider not found",
+			Error:   err.Error(),
+		})
+	}
+	fmt.Println("provider :", provider.Email)
+	fmt.Println("customer :", customer.Email)
+	fmt.Println("Appointment created successfully:", appointment.CustomerID)
+	fmt.Println("Appointment ID:", appointment.ProviderID)
+	// Send confirmation email
+	emailBody := fmt.Sprintf(`
+		<p>Dear %s,</p>
+		<p>Your appointment has been successfully created.</p>
+		<p><strong>Details:</strong></p>
+		<ul>
+			<li><strong>Service:</strong> %s</li>
+			<li><strong>Provider:</strong> %s</li>
+			<li><strong>Start Time:</strong> %s</li>
+			<li><strong>End Time:</strong> %s</li>
+			<li><strong>Status:</strong> %s</li>
+		</ul>
+		<p>Thank you for choosing our service!</p>
+		<p>Best regards,</p>
+		<p>Your Appointment Team</p>
+	`, customer.Name, service.Name, provider.Name,
+		appointment.StartTime.Format("2006-01-02 15:04:05"), appointment.EndTime.Format("2006-01-02 15:04:05"),
+		appointment.Status)
+	if err := utils.SendEmail(customer.Email, "Appointment Confirmation", emailBody); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+			Message: "Failed to send confirmation email",
+			Error:   err.Error(),
+		})
+	}
+	fmt.Println("Confirmation email sent successfully")
+	//mail to service provider
+	emailBody = fmt.Sprintf(`
+		<p>Dear %s,</p>
+		<p>You have a new appointment scheduled.</p>
+		<p><strong>Details:</strong></p>
+		<ul>
+			<li><strong>Service:</strong> %s</li>
+			<li><strong>Customer:</strong> %s</li>
+			<li><strong>Start Time:</strong> %s</li>
+			<li><strong>End Time:</strong> %s</li>
+			<li><strong>Status:</strong> %s</li>
+		</ul>
+		<p>Thank you for choosing our service!</p>
+		<p>Best regards,</p>
+		<p>Your Appointment Team</p>
+	`, provider.Name, service.Name, customer.Name,
+		appointment.StartTime.Format("2006-01-02 15:04:05"), appointment.EndTime.Format("2006-01-02 15:04:05"),
+		appointment.Status)
+	if err := utils.SendEmail(provider.Email, "New Appointment Scheduled", emailBody); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+			Message: "Failed to send confirmation email to provider",
+			Error:   err.Error(),
+		})
+	}
+	fmt.Println("Confirmation email to provider sent successfully")
 
 	return c.Status(fiber.StatusCreated).JSON(appointment)
 }
@@ -259,6 +328,72 @@ func UpdateAppointment(c *fiber.Ctx) error {
 		}
 		return nil
 	})
+	// find consumer and provider to send emails
+	var customer models.User
+	if err := db.DB.First(&customer, existingAppointment.CustomerID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
+			Message: "Customer not found",
+			Error:   err.Error(),
+		})
+	}
+	var provider models.User
+	if err := db.DB.First(&provider, existingAppointment.ProviderID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
+			Message: "Provider not found",
+			Error:   err.Error(),
+		})
+	}
+	// find service to send emails
+	var service models.Service
+	if err := db.DB.First(&service, existingAppointment.ServiceID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
+			Message: "Service not found",
+			Error:   err.Error(),
+		})
+	}
+	// Send confirmation email
+	emailBody := fmt.Sprintf(`
+		<p>Dear %s,</p>
+		<p>Your appointment has been successfully updated.</p>	
+		<ul>
+			<li>Title: %s</li>	
+			<li>Description: %s</li>
+			<li>Start Time: %s</li>
+			<li>End Time: %s</li>
+			<li>Service: %s</li>
+			<li>Provider: %s</li>
+		</ul>
+		<p>Best regards,<br>
+		Your Appointment Management System</p>
+	`, customer.Name, updatedAppointment.Title, updatedAppointment.Description, updatedAppointment.StartTime, updatedAppointment.EndTime, service.Name, provider.Name)
+	if err := utils.SendEmail(customer.Email, "Appointment Updated", emailBody); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+			Message: "Failed to send confirmation email",
+			Error:   err.Error(),
+		})
+	}
+	//mail to service provider
+	emailBody = fmt.Sprintf(`
+		<p>Dear %s,</p>
+		<p>Your appointment has been successfully updated.</p>
+		<ul>
+			<li>Title: %s</li>
+			<li>Description: %s</li>
+			<li>Start Time: %s</li>
+			<li>End Time: %s</li>
+			<li>Service: %s</li>
+			<li>Customer: %s</li>
+		</ul>
+		<p>Best regards,<br>
+		Your Appointment Management System</p>
+	`, provider.Name, updatedAppointment.Title, updatedAppointment.Description, updatedAppointment.StartTime, updatedAppointment.EndTime, service.Name, customer.Name)
+	if err := utils.SendEmail(provider.Email, "Appointment Updated", emailBody); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+			Message: "Failed to send confirmation email to provider",
+			Error:   err.Error(),
+		})
+	}
+	fmt.Println("Confirmation email to provider sent successfully")
 
 	if err != nil {
 		return c.Status(fiber.StatusConflict).JSON(utils.ErrorResponse{

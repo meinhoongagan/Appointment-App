@@ -16,7 +16,7 @@ func CheckWorkingDayAndHours(providerID uint, appointmentStart time.Time) (bool,
 	if err := db.DB.Where("provider_id = ?", providerID).Find(&providerWorkingHours).Error; err != nil {
 		return false, fmt.Errorf("provider working hours not found")
 	}
-
+	fmt.Println("Provider working hours:", providerWorkingHours)
 	// Map Go's Weekday (Sunday=0) to your DB's format (Monday=0)
 	dbDayOfWeek := (int(appointmentStart.Weekday()) + 6) % 7
 
@@ -27,6 +27,7 @@ func CheckWorkingDayAndHours(providerID uint, appointmentStart time.Time) (bool,
 			break
 		}
 	}
+	fmt.Println("Working hours for the day:", workingHoursForTheDay)
 	if reflect.DeepEqual(workingHoursForTheDay, models.WorkingHours{}) {
 		return false, nil
 	}
@@ -34,7 +35,7 @@ func CheckWorkingDayAndHours(providerID uint, appointmentStart time.Time) (bool,
 	// Convert DB time strings to time.Time on the same date as the appointment
 	location := appointmentStart.Location()
 	layout := "15:04"
-
+	fmt.Println("Location:", location)
 	buildTime := func(t string) (time.Time, error) {
 		parsed, err := time.ParseInLocation(layout, t, location)
 		if err != nil {
@@ -43,7 +44,11 @@ func CheckWorkingDayAndHours(providerID uint, appointmentStart time.Time) (bool,
 		return time.Date(appointmentStart.Year(), appointmentStart.Month(), appointmentStart.Day(),
 			parsed.Hour(), parsed.Minute(), 0, 0, location), nil
 	}
-
+	fmt.Println("Layout:", layout)
+	fmt.Println("Appointment start:", appointmentStart)
+	fmt.Println("Working hours start time:", workingHoursForTheDay.StartTime)
+	fmt.Println("Working hours end time:", workingHoursForTheDay.EndTime)
+	// Parse start and end times
 	startTime, err := buildTime(workingHoursForTheDay.StartTime)
 	if err != nil {
 		return false, fmt.Errorf("invalid start time format")

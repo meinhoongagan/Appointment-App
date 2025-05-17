@@ -1,11 +1,13 @@
 package service
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/meinhoongagan/appointment-app/db"
 	"github.com/meinhoongagan/appointment-app/models"
+	"github.com/meinhoongagan/appointment-app/utils"
 )
 
 // GetProviderUpcomingAppointments returns upcoming appointments for the logged-in provider
@@ -310,6 +312,50 @@ func UpdateAppointmentStatus(c *fiber.Ctx) error {
 		})
 	}
 
+	// find provider and customer and send email
+	var provider models.User
+	if err := db.DB.First(&provider, appointment.ProviderID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Provider not found",
+		})
+	}
+	var customer models.User
+	if err := db.DB.First(&customer, appointment.CustomerID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Customer not found",
+		})
+	}
+	emailBody := `
+		<!DOCTYPE html>
+		<html>
+		<head>
+			<meta charset="UTF-8">
+			<title>Appointment Status Update</title>
+		</head>
+		<body>
+			<h1>Appointment Status Update</h1>
+			<p>Dear %s,</p>
+			<p>Your appointment with %s has been %s.</p>
+			<p>Appointment Details:</p>
+			<ul>
+				<li>Service: %s</li>
+				<li>Start Time: %s</li>
+				<li>End Time: %s</li>
+				<li>Status: %s</li>
+			</ul>
+			<p>Thank you for using our service!</p>
+			<p>Best regards,</p>
+			<p>Your Appointment App Team</p>
+		</body>
+		</html>
+			`
+	emailBody = fmt.Sprintf(emailBody, customer.Name, provider.Name, newStatus, appointment.Service.Name, appointment.StartTime.Format("2006-01-02 15:04"), appointment.EndTime.Format("2006-01-02 15:04"), newStatus)
+	if err := utils.SendEmail(customer.Email, "Appointment Status Update", emailBody); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to send email notification",
+		})
+	}
+
 	return c.JSON(fiber.Map{
 		"message":     "Appointment status updated successfully",
 		"appointment": appointment,
@@ -352,7 +398,6 @@ func RescheduleAppointment(c *fiber.Ctx) error {
 	// Parse request body
 	var rescheduleData struct {
 		StartTime string `json:"start_time"`
-		EndTime   string `json:"end_time"`
 	}
 
 	if err := c.BodyParser(&rescheduleData); err != nil {
@@ -366,20 +411,6 @@ func RescheduleAppointment(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid start time format. Please use RFC3339 format.",
-		})
-	}
-
-	endTime, err := time.Parse(time.RFC3339, rescheduleData.EndTime)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid end time format. Please use RFC3339 format.",
-		})
-	}
-
-	// Validate time logic
-	if endTime.Before(startTime) || endTime.Equal(startTime) {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "End time must be after start time",
 		})
 	}
 
@@ -397,6 +428,15 @@ func RescheduleAppointment(c *fiber.Ctx) error {
 			"error": "Appointment not found",
 		})
 	}
+
+	// Find service duration to calculate end time
+	var service models.Service
+	if err := db.DB.First(&service, appointment.ServiceID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Service not found",
+		})
+	}
+	endTime := startTime.Add(time.Duration(service.Duration) * time.Minute)
 
 	// Check if the provider owns this appointment
 	if appointment.ProviderID != userID && role != "admin" {
@@ -436,6 +476,45 @@ func RescheduleAppointment(c *fiber.Ctx) error {
 			"error": "Failed to reschedule appointment",
 		})
 	}
+	// find provider and customer and send email
+	var provider models.User
+	if err := db.DB.First(&provider, appointment.ProviderID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Provider not found",
+		})
+	}
+	var customer models.User
+	if err := db.DB.First(&customer, appointment.CustomerID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Customer not found",
+		})
+	}
+	emailBody := `
+		<!DOCTYPE html>
+		<html>
+		<head>
+			<meta charset="UTF-8">	
+			<meta name="viewport" content="width=device-width, initial-scale=1.0">
+			<title>Appointment Rescheduled</title>
+		</head>
+		<body>
+			<h1>Appointment Rescheduled</h1>
+			<p>Dear ` + customer.Name + `,</p>
+			<p>Your appointment with ` + provider.Name + ` has been rescheduled to the following times:</p>
+			<p>Start Time: ` + appointment.StartTime.Format("2006-01-02 15:04:05") + `</p>
+			<p>End Time: ` + appointment.EndTime.Format("2006-01-02 15:04:05") + `</p>
+			<p>Best regards,<br>` + provider.Name + `</p>
+		</body>
+		</html>
+	`
+	err = utils.SendEmail(customer.Email, "Appointment Rescheduled", emailBody)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to send email",
+		})
+	}
+
+	fmt.Println("Email sent to:", customer.Email)
 
 	return c.JSON(fiber.Map{
 		"message":     "Appointment rescheduled successfully",

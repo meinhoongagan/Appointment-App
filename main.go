@@ -28,6 +28,6 @@ func main() {
 	routes.SetupServiceRoutes(app)
 	routes.SetupAppointmentRoutes(app)
 
-	app.Listen(":3000")
-	fmt.Println("Server started on port 3000")
+	app.Listen(":8000")
+	fmt.Println("Server started on port 8000")
 }
