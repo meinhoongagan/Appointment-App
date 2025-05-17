@@ -219,6 +219,23 @@ func Logout(c *fiber.Ctx) error {
 	})
 }
 
+// GetUserByID returns a user by ID
+func GetUserByID(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var user models.User
+
+	if err := db.DB.Preload("Role").Where("id = ?", id).First(&user).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "User not found",
+		})
+	}
+
+	// Don't send password in response
+	user.Password = ""
+
+	return c.JSON(user)
+}
+
 // RefreshToken generates a new access token using a refresh token
 func RefreshToken(c *fiber.Ctx) error {
 	type RefreshRequest struct {

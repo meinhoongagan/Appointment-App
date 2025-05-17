@@ -18,4 +18,7 @@ func SetupAuthRoutes(app *fiber.App) {
 	auth.Get("/me", middleware.Protected(), controllers.GetUserProfile)
 	auth.Post("/logout", middleware.Protected(), controllers.Logout)
 	auth.Post("/refresh", controllers.RefreshToken)
+
+	//Get user by ID
+	auth.Get("/user/:id", middleware.Protected(), controllers.GetUserByID)
 }
