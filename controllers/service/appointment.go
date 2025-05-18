@@ -315,13 +315,6 @@ func UpdateAppointmentStatus(c *fiber.Ctx) error {
 		})
 	}
 
-	// Verify that the user is a provider
-	if role != "provider" && role != "admin" {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "Access denied. Only providers can update appointment status.",
-		})
-	}
-
 	// Get appointment ID from URL
 	appointmentID, err := c.ParamsInt("id")
 	if err != nil {
@@ -361,9 +354,19 @@ func UpdateAppointmentStatus(c *fiber.Ctx) error {
 
 	// Check if the provider owns this appointment
 	if appointment.ProviderID != userID && role != "admin" {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "You can only update your own appointments",
-		})
+		//Get Provider ID by receptionistID
+		var provider models.ReceptionistSettings
+		if err := db.DB.First(&provider, "receptionist_id = ?", userID).Error; err != nil {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "Provider not found",
+			})
+		}
+		if appointment.ProviderID != provider.ProviderID {
+			// Check if the appointment belongs to the provider
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "You can only update your own appointments",
+			})
+		}
 	}
 
 	// Update the status
@@ -442,7 +445,7 @@ func RescheduleAppointment(c *fiber.Ctx) error {
 	}
 
 	// Verify that the user is a provider
-	if role != "provider" && role != "admin" {
+	if role != "provider" && role != "admin" && role != "receptionist" {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 			"error": "Access denied. Only providers can reschedule appointments.",
 		})
@@ -476,6 +479,7 @@ func RescheduleAppointment(c *fiber.Ctx) error {
 	}
 
 	now := time.Now()
+	fmt.Println("Current time:", startTime)
 	if startTime.Before(now) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Cannot schedule an appointment in the past",
@@ -501,9 +505,18 @@ func RescheduleAppointment(c *fiber.Ctx) error {
 
 	// Check if the provider owns this appointment
 	if appointment.ProviderID != userID && role != "admin" {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "You can only reschedule your own appointments",
-		})
+		var provider models.ReceptionistSettings
+		if err := db.DB.First(&provider, "receptionist_id = ?", userID).Error; err != nil {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "Provider not found",
+			})
+		}
+		if appointment.ProviderID != provider.ProviderID {
+			// Check if the appointment belongs to the provider
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "You can only update your own appointments",
+			})
+		}
 	}
 
 	// Check if appointment is in a status that can be rescheduled
@@ -530,8 +543,34 @@ func RescheduleAppointment(c *fiber.Ctx) error {
 
 	// Update the appointment times
 	appointment.StartTime = startTime
-	appointment.EndTime = endTime
-
+	duration := service.Duration
+	isWorkingHour, err := utils.CheckWorkingDayAndHours(appointment.ProviderID, appointment.StartTime)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+			Message: "Error checking working hours",
+			Error:   err.Error(),
+		})
+	}
+	// Check if the appointment is during break time
+	fmt.Println("Checking break time...")
+	if !isWorkingHour {
+		return c.Status(fiber.StatusConflict).JSON(utils.ErrorResponse{
+			Message: "Appointment is outside working hours or during break",
+		})
+	}
+	available, err := utils.CheckAvailability(appointment.ProviderID, appointment.StartTime, duration)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to check availability",
+		})
+	}
+	if !available {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"error": "The requested time slot conflicts with existing appointments",
+		})
+	}
+	appointment.EndTime = startTime.Add(time.Duration(service.Duration) * time.Minute)
+	appointment.Status = models.StatusPending
 	if err := db.DB.Save(&appointment).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to reschedule appointment",

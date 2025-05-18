@@ -56,6 +56,18 @@ func GetMyServices(c *fiber.Ctx) error {
 		})
 	}
 
+	if c.Locals("role") == "receptionist" {
+		var receptionist models.ReceptionistSettings
+		if err := db.DB.Where("receptionist_id = ?", userID).First(&receptionist).Error; err != nil {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "Only receptionists can access this endpoint",
+			})
+		}
+		fmt.Println("Receptionist settings found:", receptionist)
+		userID = receptionist.ProviderID
+		fmt.Println("User ID from receptionist settings:", userID)
+	}
+
 	var services []models.Service
 	if err := db.DB.Preload("Provider.Role").
 		Where("provider_id = ?", userID).
