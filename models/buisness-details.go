@@ -9,21 +9,22 @@ import (
 // BusinessDetails contains information about the provider's business
 type BusinessDetails struct {
 	gorm.Model
-	ProviderID      uint   `json:"provider_id"`
-	BusinessName    string `json:"business_name"`
-	Description     string `json:"description"`
-	Address         string `json:"address"`
-	City            string `json:"city"`
-	State           string `json:"state"`
-	ZipCode         string `json:"zip_code"`
-	Country         string `json:"country"`
-	PhoneNumber     string `json:"phone_number"`
-	Email           string `json:"email"`
-	Website         string `json:"website"`
-	LogoURL         string `json:"logo_url"`
-	BusinessHours   string `json:"business_hours"`
-	TaxNumber       string `json:"tax_number"`
-	BusinessLicense string `json:"business_license"`
+	ProviderID        uint   `json:"provider_id"`
+	BusinessName      string `json:"business_name"`
+	Description       string `json:"description"`
+	Address           string `json:"address"`
+	City              string `json:"city"`
+	State             string `json:"state"`
+	ZipCode           string `json:"zip_code"`
+	Country           string `json:"country"`
+	PhoneNumber       string `json:"phone_number"`
+	Email             string `json:"email"`
+	Website           string `json:"website"`
+	ProfilePictureURL string `json:"profile_picture_url"`
+	CertificateURLs   string `json:"certificate_urls" gorm:"type:json"`
+	BusinessHours     string `json:"business_hours"`
+	TaxNumber         string `json:"tax_number"`
+	BusinessLicense   string `json:"business_license"`
 }
 
 // ProviderSettings contains settings for the provider

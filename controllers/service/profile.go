@@ -1,9 +1,16 @@
 package service
 
 import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/meinhoongagan/appointment-app/db"
 	"github.com/meinhoongagan/appointment-app/models"
+	"github.com/meinhoongagan/appointment-app/utils"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -130,6 +137,175 @@ func UpdateBusinessDetails(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"message":          "Business details updated successfully",
 		"business_details": businessDetails,
+	})
+}
+
+func UploadBusinessMedia(c *fiber.Ctx) error {
+	// Assume provider_id is stored in Locals from JWT middleware
+	providerID, ok := c.Locals("userID").(uint)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(utils.ErrorResponse{
+			Message: "Provider ID not found",
+			Error:   "Authentication required or provider_id missing",
+		})
+	}
+
+	// Check if BusinessDetails exists
+	var businessDetails models.BusinessDetails
+	if err := db.DB.Where("provider_id = ?", providerID).First(&businessDetails).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
+			Message: "Business details not found",
+			Error:   err.Error(),
+		})
+	}
+
+	// Parse multipart form (max 10 MB)
+	form, err := c.MultipartForm()
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(utils.ErrorResponse{
+			Message: "Failed to parse multipart form",
+			Error:   err.Error(),
+		})
+	}
+
+	// Create temporary directory for uploads
+	tempDir := "uploads"
+	if err := os.MkdirAll(tempDir, os.ModePerm); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+			Message: "Failed to create temp directory",
+			Error:   err.Error(),
+		})
+	}
+
+	// Handle profile picture
+	profileFiles := form.File["profile_picture"]
+	if len(profileFiles) > 0 {
+		profileFile := profileFiles[0]
+		// Validate file type
+		allowedTypes := map[string]bool{"image/jpeg": true, "image/png": true}
+		if !allowedTypes[profileFile.Header.Get("Content-Type")] {
+			return c.Status(fiber.StatusBadRequest).JSON(utils.ErrorResponse{
+				Message: "Invalid profile picture type. Only JPEG/PNG allowed",
+			})
+		}
+
+		tempPath := filepath.Join(tempDir, profileFile.Filename)
+		if err := c.SaveFile(profileFile, tempPath); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+				Message: "Failed to save profile picture",
+				Error:   err.Error(),
+			})
+		}
+		defer os.Remove(tempPath) // Clean up
+
+		publicID := fmt.Sprintf("provider_%d_profile", providerID)
+		url, err := utils.UploadToCloudinary(tempPath, publicID, "provider_profiles")
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+				Message: "Failed to upload profile picture to Cloudinary",
+				Error:   err.Error(),
+			})
+		}
+		businessDetails.ProfilePictureURL = url
+	}
+
+	// Handle certificates
+	certificateFiles := form.File["certificates"]
+	var certificateURLs []string
+
+	// Safely unmarshal existing certificate URLs if not empty
+	if businessDetails.CertificateURLs != "" {
+		if err := json.Unmarshal([]byte(businessDetails.CertificateURLs), &certificateURLs); err != nil {
+			// If there's an error, initialize as empty array rather than failing
+			certificateURLs = []string{}
+			log.Printf("Error parsing existing certificate URLs: %v. Initializing empty array.", err)
+		}
+	}
+
+	for i, certFile := range certificateFiles {
+		// Validate file type
+		if certFile.Header.Get("Content-Type") != "application/pdf" {
+			return c.Status(fiber.StatusBadRequest).JSON(utils.ErrorResponse{
+				Message: "Invalid certificate type. Only PDF allowed",
+			})
+		}
+
+		tempPath := filepath.Join(tempDir, certFile.Filename)
+		if err := c.SaveFile(certFile, tempPath); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+				Message: "Failed to save certificate",
+				Error:   err.Error(),
+			})
+		}
+		defer os.Remove(tempPath) // Clean up
+
+		publicID := fmt.Sprintf("provider_%d_cert_%d", providerID, i+1)
+		// Upload certificate without resizing by passing nil for the transformation
+		// Modify utils.UploadToCloudinary to accept nil transformation for PDFs
+		url, err := utils.UploadToCloudinary(tempPath, publicID, "certificates")
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+				Message: "Failed to upload certificate to Cloudinary",
+				Error:   err.Error(),
+			})
+		}
+		certificateURLs = append(certificateURLs, url)
+	}
+
+	// Update CertificateURLs - ensure it's always a valid JSON string array
+	if len(certificateURLs) > 0 {
+		urlsJSON, err := json.Marshal(certificateURLs)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+				Message: "Failed to serialize certificate URLs",
+				Error:   err.Error(),
+			})
+		}
+		businessDetails.CertificateURLs = string(urlsJSON)
+	} else if businessDetails.CertificateURLs == "" {
+		// Ensure we have a valid empty JSON array if there are no certificates
+		businessDetails.CertificateURLs = "[]"
+	}
+
+	// Save updates to database
+	if err := db.DB.Save(&businessDetails).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+			Message: "Failed to update business details",
+			Error:   err.Error(),
+		})
+	}
+
+	// Send confirmation email
+	var provider models.User
+	if err := db.DB.First(&provider, providerID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
+			Message: "Provider not found",
+			Error:   err.Error(),
+		})
+	}
+
+	emailBody := fmt.Sprintf(`
+		<p>Dear %s,</p>
+		<p>Your profile media has been updated successfully.</p>
+		<p><strong>Details:</strong></p>
+		<ul>
+			<li><strong>Profile Picture:</strong> %s</li>
+			<li><strong>Certificates:</strong> %d uploaded</li>
+		</ul>
+		<p>Best regards,</p>
+		<p>Your Appointment Team</p>
+	`, provider.Name, businessDetails.ProfilePictureURL, len(certificateURLs))
+	if err := utils.SendEmail(provider.Email, "Profile Media Updated", emailBody); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+			Message: "Failed to send confirmation email",
+			Error:   err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message":          "Media uploaded successfully",
+		"profile_picture":  businessDetails.ProfilePictureURL,
+		"certificate_urls": certificateURLs,
 	})
 }
 

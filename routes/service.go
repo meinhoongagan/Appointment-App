@@ -57,6 +57,7 @@ func SetupServiceRoutes(app *fiber.App) {
 	// Business details
 	profile.Get("/business", services.GetBusinessDetails)
 	profile.Patch("/business", services.UpdateBusinessDetails)
+	profile.Post("/business/upload-media", services.UploadBusinessMedia)
 
 	// Settings
 	profile.Get("/settings", services.GetProviderSettings)

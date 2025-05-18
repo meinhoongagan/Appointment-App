@@ -11,12 +11,10 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-// StartCronJobs initializes and starts the cron scheduler for appointment reminders
 func StartCronJobs() {
 	fmt.Println("Starting cron job scheduler...")
 	c := cron.New()
-	// Run every minute to check for appointments in the next hour
-	_, err := c.AddFunc("* * * * *", sendAppointmentReminders)
+	_, err := c.AddFunc("*/5 * * * *", sendAppointmentReminders)
 	if err != nil {
 		log.Fatalf("Failed to add cron job: %v", err)
 	}
