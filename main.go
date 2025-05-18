@@ -10,6 +10,8 @@ import (
 	"github.com/meinhoongagan/appointment-app/db"
 
 	"github.com/meinhoongagan/appointment-app/routes"
+
+	"github.com/meinhoongagan/appointment-app/cron"
 )
 
 func main() {
@@ -27,6 +29,9 @@ func main() {
 	routes.SetupRBACRoutes(app)
 	routes.SetupServiceRoutes(app)
 	routes.SetupAppointmentRoutes(app)
+
+	// Initialize cron jobs
+	cron.StartCronJobs()
 
 	app.Listen(":8000")
 	fmt.Println("Server started on port 8000")
