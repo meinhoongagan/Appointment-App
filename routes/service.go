@@ -66,9 +66,11 @@ func SetupServiceRoutes(app *fiber.App) {
 	profile.Get("/working-hours", services.GetWorkingHours)
 	profile.Patch("/working-hours", services.UpdateWorkingHours)
 
-	// Time off
-	profile.Get("/time-off", services.GetTimeOff)
-	profile.Post("/time-off", services.AddTimeOff)
-	profile.Delete("/time-off/:id", services.DeleteTimeOff)
-
+	receptionist := app.Group("/provider/receptionist", middleware.Protected())
+	// Create Receptionist
+	receptionist.Post("/", middleware.RequirePermission("services", "create"), services.CreateReceptionist)
+	receptionist.Get("/", services.GetReceptionistList)
+	receptionist.Get("/:id", services.GetReceptionistByID)
+	// profile.Patch("/:id", middleware.RequirePermission("users", "update"), services.UpdateReceptionist)
+	receptionist.Delete("/:id", middleware.RequirePermission("services", "delete"), services.DeleteReceptionist)
 }

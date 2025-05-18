@@ -38,7 +38,7 @@ func Init() {
 	// initDefaultRolesAndPermissions()
 
 	DB = db
-	// Migrate()
+	Migrate()
 	log.Println("✅ Database connection established successfully!")
 }
 

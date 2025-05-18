@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/meinhoongagan/appointment-app/db"
 	"github.com/meinhoongagan/appointment-app/models"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // GetProviderProfile retrieves the provider's profile information
@@ -141,11 +142,10 @@ func GetProviderSettings(c *fiber.Ctx) error {
 		// If settings not found, return default settings
 		return c.JSON(fiber.Map{
 			"settings": models.ProviderSettings{
-				ProviderID:              userID,
-				NotificationsEnabled:    true,
-				AutoConfirmBookings:     false,
-				AdvanceBookingDays:      30,
-				CancellationPeriodHours: 24,
+				ProviderID:           userID,
+				NotificationsEnabled: true,
+				AutoConfirmBookings:  false,
+				AdvanceBookingDays:   30,
 			},
 		})
 	}
@@ -272,81 +272,158 @@ func UpdateWorkingHours(c *fiber.Ctx) error {
 	})
 }
 
-// GetTimeOff retrieves the provider's time off periods
-func GetTimeOff(c *fiber.Ctx) error {
+func CreateReceptionist(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
-	var timeOffPeriods []models.TimeOff
-	if err := db.DB.Where("provider_id = ?", userID).Find(&timeOffPeriods).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to retrieve time off periods",
+	// Parse request body into User struct
+	receptionist := new(models.User)
+	if err := c.BodyParser(receptionist); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body: " + err.Error(),
 		})
 	}
 
-	return c.JSON(fiber.Map{
-		"time_off": timeOffPeriods,
-	})
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(receptionist.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to hash password",
+		})
+	}
+	receptionist.Password = string(hashedPassword)
+
+	// Assign role ID for receptionist
+	receptionist.RoleID = 4
+
+	// Create the receptionist user
+	if err := db.DB.Create(receptionist).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to create receptionist: " + err.Error(),
+		})
+	}
+
+	// Find the provider (assumed to be the authenticated user)
+	var provider models.User
+	if err := db.DB.Where("id = ?", userID).First(&provider).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Provider not found",
+		})
+	}
+
+	// Create receptionist settings entry
+	receptionistSettings := models.ReceptionistSettings{
+		ReceptionistID: receptionist.ID,
+		ProviderID:     provider.ID,
+	}
+	if err := db.DB.Create(&receptionistSettings).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to create receptionist settings: " + err.Error(),
+		})
+	}
+
+	return c.JSON(receptionist)
 }
 
-// AddTimeOff adds a new time off period for the provider
-func AddTimeOff(c *fiber.Ctx) error {
+func GetReceptionistList(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
-	// Parse time off data
-	timeOff := new(models.TimeOff)
-	if err := c.BodyParser(timeOff); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
+	// Find the provider
+	var provider models.User
+	if err := db.DB.Where("id = ?", userID).First(&provider).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Provider not found",
 		})
 	}
 
-	// Validate time off period
-	if timeOff.StartTime.After(timeOff.EndTime) {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Start time must be before end time",
-		})
-	}
-
-	// Set provider ID
-	timeOff.ProviderID = userID
-
-	// Create new time off period
-	if err := db.DB.Create(timeOff).Error; err != nil {
+	var receptionistSettings []models.ReceptionistSettings
+	if err := db.DB.Preload("Receptionist").Preload("Provider").Find(&receptionistSettings, "provider_id = ?", provider.ID).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to create time off period",
+			"error": "Failed to fetch receptionists: " + err.Error(),
+		})
+	}
+	// If no receptionists are found, return an empty list
+	if len(receptionistSettings) == 0 {
+		return c.JSON(fiber.Map{
+			"receptionists": []models.ReceptionistSettings{},
+		})
+	}
+	//find receptionist by receptionist id
+	var receptionistIDs []uint
+	for _, setting := range receptionistSettings {
+		receptionistIDs = append(receptionistIDs, setting.ReceptionistID)
+	}
+
+	var receptionists []models.User
+	if err := db.DB.Where("id IN ?", receptionistIDs).Find(&receptionists).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch receptionists: " + err.Error(),
 		})
 	}
 
-	return c.JSON(fiber.Map{
-		"message":  "Time off period added successfully",
-		"time_off": timeOff,
-	})
+	return c.JSON(receptionists)
 }
-
-// DeleteTimeOff deletes a time off period
-func DeleteTimeOff(c *fiber.Ctx) error {
+func GetReceptionistByID(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
-	timeOffID, err := c.ParamsInt("id")
+
+	// Parse receptionist ID from URL parameter
+	receptionistID, err := c.ParamsInt("id")
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid time off ID",
+			"error": "Invalid receptionist ID",
 		})
 	}
 
-	// Check if time off period exists and belongs to the provider
-	var timeOff models.TimeOff
-	if db.DB.Where("id = ? AND provider_id = ?", timeOffID, userID).First(&timeOff).RowsAffected == 0 {
+	// Find the provider
+	var provider models.User
+	if err := db.DB.Where("id = ?", userID).First(&provider).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Time off period not found",
+			"error": "Provider not found",
 		})
 	}
 
-	// Delete time off period
-	if err := db.DB.Delete(&timeOff).Error; err != nil {
+	var receptionist models.User
+	if err := db.DB.Where("id = ? AND role_id = 4", receptionistID).First(&receptionist).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Receptionist not found",
+		})
+	}
+
+	return c.JSON(receptionist)
+}
+
+func DeleteReceptionist(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(uint)
+
+	// Parse receptionist ID from URL parameter
+	receptionistID, err := c.ParamsInt("id")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid receptionist ID",
+		})
+	}
+
+	// Find the provider
+	var provider models.User
+	if err := db.DB.Where("id = ?", userID).First(&provider).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Provider not found",
+		})
+	}
+
+	// Delete the receptionist settings
+	if err := db.DB.Where("receptionist_id = ? AND provider_id = ?", receptionistID, provider.ID).Delete(&models.ReceptionistSettings{}).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to delete time off period",
+			"error": "Failed to delete receptionist settings: " + err.Error(),
 		})
 	}
 
-	return c.SendStatus(fiber.StatusNoContent)
+	// Delete the receptionist user
+	if err := db.DB.Delete(&models.User{}, receptionistID).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to delete receptionist: " + err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "Receptionist deleted successfully",
+	})
 }

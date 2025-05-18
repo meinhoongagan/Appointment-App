@@ -18,8 +18,8 @@ func Migrate() {
 		&models.Appointment{},
 		&models.Service{},
 		&models.WorkingHours{},
-		&models.TimeOff{},
 		&models.BusinessDetails{},
+		&models.ReceptionistSettings{},
 		&models.ProviderSettings{},
 		&models.Review{},
 	)

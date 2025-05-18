@@ -29,27 +29,22 @@ type BusinessDetails struct {
 // ProviderSettings contains settings for the provider
 type ProviderSettings struct {
 	gorm.Model
-	ProviderID              uint    `json:"provider_id"`
-	NotificationsEnabled    bool    `json:"notifications_enabled"`
-	EmailNotifications      bool    `json:"email_notifications"`
-	SMSNotifications        bool    `json:"sms_notifications"`
-	AutoConfirmBookings     bool    `json:"auto_confirm_bookings"`
-	RequirePayment          bool    `json:"require_payment"`
-	AdvanceBookingDays      int     `json:"advance_booking_days"`
-	CancellationPeriodHours int     `json:"cancellation_period_hours"`
-	CancellationFeePercent  float64 `json:"cancellation_fee_percent"`
-	TaxRate                 float64 `json:"tax_rate"`
-	Currency                string  `json:"currency"`
-	TimeZone                string  `json:"time_zone"`
-	Language                string  `json:"language"`
+	ProviderID           uint      `json:"provider_id"`
+	NotificationsEnabled bool      `json:"notifications_enabled"`
+	ClosingStartDate     time.Time `json:"closing_start_date"`
+	ClosingEndDate       time.Time `json:"closing_end_date"`
+	ClosingRemarks       string    `json:"closing_remarks"`
+	AutoConfirmBookings  bool      `json:"auto_confirm_bookings"`
+	AdvanceBookingDays   int       `json:"advance_booking_days"`
+	Currency             string    `json:"currency"`
+	TimeZone             string    `json:"time_zone"`
+	Language             string    `json:"language"`
 }
 
-type TimeOff struct {
+type ReceptionistSettings struct {
 	gorm.Model
-	ProviderID uint      `json:"provider_id"`
-	Title      string    `json:"title"`
-	StartTime  time.Time `json:"start_time"`
-	EndTime    time.Time `json:"end_time"`
-	AllDay     bool      `json:"all_day"`
-	Notes      string    `json:"notes"`
+	Provider       User `json:"provider" gorm:"foreignKey:ProviderID"`
+	ProviderID     uint `json:"provider_id"`
+	Receptionist   User `json:"receptionist" gorm:"foreignKey:ReceptionistID"`
+	ReceptionistID uint `json:"receptionist_id"`
 }
