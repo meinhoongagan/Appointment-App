@@ -544,6 +544,7 @@ func RescheduleAppointment(c *fiber.Ctx) error {
 	// Update the appointment times
 	appointment.StartTime = startTime
 	duration := service.Duration
+	total_duration := duration + service.BufferTime
 	isWorkingHour, err := utils.CheckWorkingDayAndHours(appointment.ProviderID, appointment.StartTime)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
@@ -558,7 +559,7 @@ func RescheduleAppointment(c *fiber.Ctx) error {
 			Message: "Appointment is outside working hours or during break",
 		})
 	}
-	available, err := utils.CheckAvailability(appointment.ProviderID, appointment.StartTime, duration)
+	available, err := utils.CheckAvailability(appointment.ProviderID, appointment.StartTime, total_duration)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to check availability",

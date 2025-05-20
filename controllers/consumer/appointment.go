@@ -80,6 +80,7 @@ func CreateAppointment(c *fiber.Ctx) error {
 	fmt.Println("Fetched service:", service)
 	// Get duration directly from service
 	duration := service.Duration
+	totalDuration := duration + service.BufferTime
 
 	// Convert StartTime to IST before checking availability
 	appointment.StartTime = utils.ToIST(appointment.StartTime)
@@ -102,7 +103,7 @@ func CreateAppointment(c *fiber.Ctx) error {
 	fmt.Println("Checked break time successfully")
 
 	// Check for availability
-	available, err := utils.CheckAvailability(appointment.ProviderID, appointment.StartTime, duration)
+	available, err := utils.CheckAvailability(appointment.ProviderID, appointment.StartTime, totalDuration)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
 			Message: "Error checking availability",

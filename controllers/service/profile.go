@@ -6,12 +6,14 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/meinhoongagan/appointment-app/db"
 	"github.com/meinhoongagan/appointment-app/models"
 	"github.com/meinhoongagan/appointment-app/utils"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // GetProviderProfile retrieves the provider's profile information
@@ -388,17 +390,8 @@ func GetWorkingHours(c *fiber.Ctx) error {
 
 	// If no working hours are found, return default template
 	if len(workingHours) == 0 {
-		defaultHours := []models.WorkingHours{
-			{ProviderID: userID, DayOfWeek: 1, StartTime: "09:00", EndTime: "17:00"},
-			{ProviderID: userID, DayOfWeek: 2, StartTime: "09:00", EndTime: "17:00"},
-			{ProviderID: userID, DayOfWeek: 3, StartTime: "09:00", EndTime: "17:00"},
-			{ProviderID: userID, DayOfWeek: 4, StartTime: "09:00", EndTime: "17:00"},
-			{ProviderID: userID, DayOfWeek: 5, StartTime: "09:00", EndTime: "17:00"},
-			{ProviderID: userID, DayOfWeek: 6, StartTime: "00:00", EndTime: "00:00"},
-			{ProviderID: userID, DayOfWeek: 0, StartTime: "00:00", EndTime: "00:00"},
-		}
-		return c.JSON(fiber.Map{
-			"working_hours": defaultHours,
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "No working hours found",
 		})
 	}
 
@@ -407,40 +400,263 @@ func GetWorkingHours(c *fiber.Ctx) error {
 	})
 }
 
+func CreateWorkingHours(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(uint)
+
+	// Parse input
+	var inputHours []models.WorkingHours
+	if err := c.BodyParser(&inputHours); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid input: " + err.Error(),
+		})
+	}
+
+	// Validate input
+	if len(inputHours) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "At least one working hours entry is required",
+		})
+	}
+
+	// Check for duplicate days and validate times
+	daySet := make(map[models.DayOfWeek]bool)
+	for i, wh := range inputHours {
+		// Validate day_of_week
+		if wh.DayOfWeek < models.Sunday || wh.DayOfWeek > models.Saturday {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("Invalid day_of_week at index %d: must be 0-6", i),
+			})
+		}
+		if daySet[wh.DayOfWeek] {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("Duplicate day_of_week %d at index %d", wh.DayOfWeek, i),
+			})
+		}
+		daySet[wh.DayOfWeek] = true
+
+		// Validate start_time and end_time
+		startTime, err := time.Parse("15:04", wh.StartTime)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("Invalid start_time at index %d: must be HH:MM", i),
+			})
+		}
+		endTime, err := time.Parse("15:04", wh.EndTime)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("Invalid end_time at index %d: must be HH:MM", i),
+			})
+		}
+		if !endTime.After(startTime) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("end_time must be after start_time at index %d", i),
+			})
+		}
+
+		// Validate break times if provided
+		if wh.BreakStart != nil && wh.BreakEnd != nil {
+			breakStart, err := time.Parse("15:04", *wh.BreakStart)
+			if err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": fmt.Sprintf("Invalid break_start at index %d: must be HH:MM", i),
+				})
+			}
+			breakEnd, err := time.Parse("15:04", *wh.BreakEnd)
+			if err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": fmt.Sprintf("Invalid break_end at index %d: must be HH:MM", i),
+				})
+			}
+			if !breakStart.After(startTime) || !breakEnd.After(breakStart) || !endTime.After(breakEnd) {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": fmt.Sprintf("Invalid break times at index %d: must be within working hours", i),
+				})
+			}
+		} else if (wh.BreakStart != nil) != (wh.BreakEnd != nil) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("Both break_start and break_end must be provided or omitted at index %d", i),
+			})
+		}
+	}
+
+	// Set provider ID
+	for i := range inputHours {
+		inputHours[i].ProviderID = userID
+	}
+
+	// Check if working hours already exist
+	var existingHours []models.WorkingHours
+	if err := db.DB.Where("provider_id = ?", userID).Find(&existingHours).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to check existing working hours",
+		})
+	}
+	if len(existingHours) > 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Working hours already exist; use update endpoint to modify",
+		})
+	}
+
+	// Create working hours
+	if err := db.DB.Create(&inputHours).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to create working hours: " + err.Error(),
+		})
+	}
+
+	// Retrieve created working hours
+	var createdHours []models.WorkingHours
+	if err := db.DB.Where("provider_id = ?", userID).Find(&createdHours).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to retrieve created working hours",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message":       "Working hours created successfully",
+		"working_hours": createdHours,
+	})
+}
+
 // UpdateWorkingHours updates the provider's working hours
 func UpdateWorkingHours(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
-	// Parse update data
-	var updatedHours []models.WorkingHours
-	if err := c.BodyParser(&updatedHours); err != nil {
+	// Parse input
+	var inputHours []models.WorkingHours
+	if err := c.BodyParser(&inputHours); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
+			"error": "Invalid input: expected an array of working hours, " + err.Error(),
 		})
 	}
 
-	// Delete existing working hours for the provider
-	if err := db.DB.Where("provider_id = ?", userID).Delete(&models.WorkingHours{}).Error; err != nil {
+	// Validate input
+	if len(inputHours) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "At least one working hours entry is required",
+		})
+	}
+
+	// Check for duplicate days and validate times
+	daySet := make(map[models.DayOfWeek]bool)
+	for i, wh := range inputHours {
+		// Validate day_of_week
+		if wh.DayOfWeek < models.Sunday || wh.DayOfWeek > models.Saturday {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("Invalid day_of_week at index %d: must be 0-6", i),
+			})
+		}
+		if daySet[wh.DayOfWeek] {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("Duplicate day_of_week %d at index %d", wh.DayOfWeek, i),
+			})
+		}
+		daySet[wh.DayOfWeek] = true
+
+		// Validate start_time and end_time
+		startTime, err := time.Parse("15:04", wh.StartTime)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("Invalid start_time at index %d: must be HH:MM", i),
+			})
+		}
+		endTime, err := time.Parse("15:04", wh.EndTime)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("Invalid end_time at index %d: must be HH:MM", i),
+			})
+		}
+		if !endTime.After(startTime) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("end_time must be after start_time at index %d", i),
+			})
+		}
+
+		// Validate break times if provided
+		if wh.BreakStart != nil && wh.BreakEnd != nil {
+			breakStart, err := time.Parse("15:04", *wh.BreakStart)
+			if err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": fmt.Sprintf("Invalid break_start at index %d: must be HH:MM", i),
+				})
+			}
+			breakEnd, err := time.Parse("15:04", *wh.BreakEnd)
+			if err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": fmt.Sprintf("Invalid break_end at index %d: must be HH:MM", i),
+				})
+			}
+			if !breakStart.After(startTime) || !breakEnd.After(breakStart) || !endTime.After(breakEnd) {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": fmt.Sprintf("Invalid break times at index %d: must be within working hours", i),
+				})
+			}
+		} else if (wh.BreakStart != nil) != (wh.BreakEnd != nil) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("Both break_start and break_end must be provided or omitted at index %d", i),
+			})
+		}
+	}
+
+	// Perform updates, creates, and deletes in a transaction
+	err := db.DB.Transaction(func(tx *gorm.DB) error {
+		// Fetch existing working hours
+		var existingHours []models.WorkingHours
+		if err := tx.Where("provider_id = ?", userID).Find(&existingHours).Error; err != nil {
+			return fmt.Errorf("failed to fetch existing working hours: %v", err)
+		}
+
+		// Create a map of existing hours by day_of_week for quick lookup
+		existingMap := make(map[models.DayOfWeek]models.WorkingHours)
+		for _, h := range existingHours {
+			existingMap[h.DayOfWeek] = h
+		}
+
+		// Process input hours
+		for _, input := range inputHours {
+			input.ProviderID = userID
+			if existing, exists := existingMap[input.DayOfWeek]; exists {
+				// Update existing record
+				if err := tx.Model(&existing).Updates(models.WorkingHours{
+					StartTime:  input.StartTime,
+					EndTime:    input.EndTime,
+					BreakStart: input.BreakStart,
+					BreakEnd:   input.BreakEnd,
+				}).Error; err != nil {
+					return fmt.Errorf("failed to update working hours for day %d: %v", input.DayOfWeek, err)
+				}
+			} else {
+				// Create new record
+				if err := tx.Create(&input).Error; err != nil {
+					return fmt.Errorf("failed to create working hours for day %d: %v", input.DayOfWeek, err)
+				}
+			}
+			// Remove from existingMap to track which days remain
+			delete(existingMap, input.DayOfWeek)
+		}
+
+		// Delete any remaining existing hours not in the input
+		for day := range existingMap {
+			if err := tx.Where("provider_id = ? AND day_of_week = ?", userID, day).Delete(&models.WorkingHours{}).Error; err != nil {
+				return fmt.Errorf("failed to delete working hours for day %d: %v", day, err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to update working hours",
+			"error": "Failed to update working hours: " + err.Error(),
 		})
 	}
 
-	// Set provider ID for all entries
-	for i := range updatedHours {
-		updatedHours[i].ProviderID = userID
-	}
-
-	// Create new working hours
-	if err := db.DB.Create(&updatedHours).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to update working hours",
-		})
-	}
-
-	// Get the updated working hours
+	// Retrieve updated working hours
 	var workingHours []models.WorkingHours
-	db.DB.Where("provider_id = ?", userID).Find(&workingHours)
+	if err := db.DB.Where("provider_id = ?", userID).Find(&workingHours).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to retrieve updated working hours: " + err.Error(),
+		})
+	}
 
 	return c.JSON(fiber.Map{
 		"message":       "Working hours updated successfully",

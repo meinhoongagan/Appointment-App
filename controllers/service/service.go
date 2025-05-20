@@ -182,29 +182,37 @@ func UpdateService(c *fiber.Ctx) error {
 		"duration": func(v interface{}) interface{} {
 			switch val := v.(type) {
 			case float64:
-				return time.Duration(val)
+				// Assume float64 represents minutes, convert to time.Duration
+				if val <= 0 {
+					return nil
+				}
+				return time.Duration(val * float64(time.Minute))
 			case string:
 				duration, err := time.ParseDuration(val)
 				if err != nil {
-					return time.Duration(0)
+					return nil
 				}
 				return duration
 			default:
-				return v
+				return nil
 			}
 		},
 		"buffer_time": func(v interface{}) interface{} {
 			switch val := v.(type) {
 			case float64:
-				return time.Duration(val)
+				// Assume float64 represents minutes, convert to time.Duration
+				if val <= 0 {
+					return nil
+				}
+				return time.Duration(val * float64(time.Minute))
 			case string:
 				duration, err := time.ParseDuration(val)
 				if err != nil {
-					return time.Duration(0)
+					return nil
 				}
 				return duration
 			default:
-				return v
+				return nil
 			}
 		},
 		"cost": func(v interface{}) interface{} {
@@ -214,11 +222,11 @@ func UpdateService(c *fiber.Ctx) error {
 			case string:
 				cost, err := strconv.ParseFloat(val, 64)
 				if err != nil {
-					return 0.0
+					return nil
 				}
 				return cost
 			default:
-				return v
+				return nil
 			}
 		},
 	}
@@ -226,9 +234,14 @@ func UpdateService(c *fiber.Ctx) error {
 	// Prepare update map
 	updateMap := make(map[string]interface{})
 	for key, value := range updateData {
-		// Apply special field handling if exists
 		if converter, exists := specialFields[key]; exists {
-			updateMap[key] = converter(value)
+			if converted := converter(value); converted != nil {
+				updateMap[key] = converted
+			} else {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": fmt.Sprintf("Invalid value for %s", key),
+				})
+			}
 		} else {
 			updateMap[key] = value
 		}

@@ -21,9 +21,8 @@ type WorkingHours struct {
 	ProviderID uint      `json:"provider_id"`
 	Provider   User      `json:"provider" gorm:"foreignKey:ProviderID"`
 	DayOfWeek  DayOfWeek `json:"day_of_week"`
-	StartTime  string    `json:"start_time"` // Format "HH:MM" in 24h
-	EndTime    string    `json:"end_time"`   // Format "HH:MM" in 24h
-	IsWorkDay  bool      `json:"is_work_day" gorm:"default:true"`
+	StartTime  string    `json:"start_time"`  // Format "HH:MM" in 24h
+	EndTime    string    `json:"end_time"`    // Format "HH:MM" in 24h
 	BreakStart *string   `json:"break_start"` // Optional break start time
 	BreakEnd   *string   `json:"break_end"`   // Optional break end time
 }

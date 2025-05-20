@@ -22,7 +22,7 @@ func CheckWorkingDayAndHours(providerID uint, appointmentStart time.Time) (bool,
 
 	var workingHoursForTheDay models.WorkingHours
 	for _, wh := range providerWorkingHours {
-		if int(wh.DayOfWeek) == dbDayOfWeek && wh.IsWorkDay {
+		if int(wh.DayOfWeek) == dbDayOfWeek {
 			workingHoursForTheDay = wh
 			break
 		}

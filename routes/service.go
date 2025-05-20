@@ -65,6 +65,7 @@ func SetupServiceRoutes(app *fiber.App) {
 
 	// Working hours
 	profile.Get("/working-hours", services.GetWorkingHours)
+	profile.Post("/working-hours", services.CreateWorkingHours)
 	profile.Patch("/working-hours", services.UpdateWorkingHours)
 
 	receptionist := app.Group("/provider/receptionist", middleware.Protected())
