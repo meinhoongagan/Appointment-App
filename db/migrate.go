@@ -12,6 +12,7 @@ func Migrate() {
 
 	err := DB.AutoMigrate(
 		&models.User{},
+		&models.UserDetails{},
 		&models.Role{},
 		&models.Permission{},
 		&models.Recurrence{},

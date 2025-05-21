@@ -29,6 +29,7 @@ func main() {
 	routes.SetupRBACRoutes(app)
 	routes.SetupServiceRoutes(app)
 	routes.SetupAppointmentRoutes(app)
+	routes.SetupConsumerRoutes(app)
 
 	// Initialize cron jobs
 	cron.StartCronJobs()
