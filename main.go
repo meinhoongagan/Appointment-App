@@ -12,11 +12,14 @@ import (
 	"github.com/meinhoongagan/appointment-app/routes"
 
 	"github.com/meinhoongagan/appointment-app/cron"
+
+	"github.com/meinhoongagan/appointment-app/redis"
 )
 
 func main() {
 	app := fiber.New()
 	db.Init()
+	redis.InitRedis()
 
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: "*",

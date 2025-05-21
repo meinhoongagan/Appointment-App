@@ -21,4 +21,13 @@ func SetupAuthRoutes(app *fiber.App) {
 
 	//Get user by ID
 	auth.Get("/user/:id", middleware.Protected(), controllers.GetUserByID)
+
+	//Send OTP
+	auth.Post("/send-otp", controllers.SendOTP)
+
+	//Verify OTP
+	auth.Post("/otp/verify/", controllers.VerifyOTP)
+
+	//Reset Password
+	auth.Post("/reset-password/:token", controllers.ResetPassword)
 }
