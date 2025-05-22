@@ -10,8 +10,10 @@ import (
 func SetupConsumerRoutes(app *fiber.App) {
 	consumerGroup := app.Group("/consumer", middleware.Protected())
 	consumerGroup.Get("/profile", consumer.GetUserProfile)
+	consumerGroup.Get("/upcomping-appointments", consumer.GetUpcomingAppointments)
 	consumerGroup.Post("/profile", consumer.CreateUserProfile)
 	consumerGroup.Post("/profile/picture", consumer.UpdateUserProfilePicture)
 	consumerGroup.Patch("/profile", consumer.UpdateUserProfile)
 	consumerGroup.Delete("/profile", consumer.DeleteUserProfile)
+	consumerGroup.Patch("/cancel-appointment/:id", consumer.CancelAppointment)
 }

@@ -32,6 +32,59 @@ func GetProviderProfile(c *fiber.Ctx) error {
 	})
 }
 
+// Get Buisness Details and Provider Details By ID
+func GetProviderDetailsByID(c *fiber.Ctx) error {
+	type Profile struct {
+		ProviderID uint
+		Name       string
+		Email      string
+	}
+	type details struct {
+		BusinessDetails models.BusinessDetails
+		Provider        Profile
+	}
+
+	id := c.Params("id")
+	//search profile by id and get business details
+	var provider models.User
+	if err := db.DB.Preload("Role").First(&provider, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Provider not found",
+		})
+	}
+	var profile Profile
+	profile.ProviderID = provider.ID
+	profile.Name = provider.Name
+	profile.Email = provider.Email
+	var businessDetails models.BusinessDetails
+	if err := db.DB.Where("provider_id = ?", id).First(&businessDetails).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Business details not found",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"profile": details{
+			BusinessDetails: businessDetails,
+			Provider:        profile,
+		},
+	})
+}
+
+// GetAllServicesByProviderID retrieves all services by provider ID
+func GetAllServicesByProviderID(c *fiber.Ctx) error {
+	providerID := c.Params("id")
+	var services []models.Service
+	if err := db.DB.Where("provider_id = ?", providerID).Find(&services).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "No services found for this provider",
+		})
+	}
+	return c.JSON(fiber.Map{
+		"services": services,
+	})
+}
+
 // UpdateProviderProfile updates the provider's personal information
 func UpdateProviderProfile(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)

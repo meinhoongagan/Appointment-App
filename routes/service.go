@@ -10,6 +10,8 @@ func SetupServiceRoutes(app *fiber.App) {
 	service := app.Group("provider/services")
 	service.Get("/", services.GetAllServices)
 	service.Get("/:id", services.GetService)
+	service.Get("/search/name", services.SearchServiceByName)
+	service.Get("/names/search/names", services.SearchServiceNames)
 	service.Get("/get-provider/service", middleware.Protected(), services.GetMyServices)
 	service.Post("/", middleware.Protected(), middleware.RequirePermission("services", "create"), services.CreateService)
 	service.Patch("/:id", middleware.Protected(), middleware.RequirePermission("services", "update"), services.UpdateService)
@@ -67,6 +69,10 @@ func SetupServiceRoutes(app *fiber.App) {
 	profile.Get("/working-hours", services.GetWorkingHours)
 	profile.Post("/working-hours", services.CreateWorkingHours)
 	profile.Patch("/working-hours", services.UpdateWorkingHours)
+
+	//details for comsumer
+	profile.Get("/:id", services.GetProviderDetailsByID)
+	profile.Get("/services/:id", services.GetAllServicesByProviderID)
 
 	receptionist := app.Group("/provider/receptionist", middleware.Protected())
 	// Create Receptionist

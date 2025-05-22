@@ -406,6 +406,83 @@ func UpdateAppointment(c *fiber.Ctx) error {
 	return c.JSON(updatedAppointment)
 }
 
+// Get Upcoming appointments and history based on Query Params
+func GetUpcomingAppointments(c *fiber.Ctx) error {
+	var appointments []models.Appointment
+	status := c.Query("status")
+	if status == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(utils.ErrorResponse{
+			Message: "Status query parameter is required",
+		})
+	}
+	if status != "upcoming" && status != "history" {
+		return c.Status(fiber.StatusBadRequest).JSON(utils.ErrorResponse{
+			Message: "Invalid status value. Use 'upcoming' or 'history'",
+		})
+	}
+	// Get the user ID from the JWT token
+	userID, ok := c.Locals("userID").(uint)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(utils.ErrorResponse{
+			Message: "Invalid user ID in token",
+		})
+	}
+	// Get the current time in UTC
+	currentTime := time.Now().UTC()
+	// Query the database based on the status
+	if status == "upcoming" {
+		if err := db.DB.Where("customer_id = ? AND start_time > ?", userID, currentTime).Preload("Service").Preload("Provider").Find(&appointments).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+				Message: "Failed to fetch upcoming appointments",
+				Error:   err.Error(),
+			})
+		}
+	}
+	if status == "history" {
+		if err := db.DB.Where("customer_id = ? AND start_time < ?", userID, currentTime).Preload("Service").Preload("Provider").Find(&appointments).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+				Message: "Failed to fetch appointment history",
+				Error:   err.Error(),
+			})
+		}
+	}
+	// Return the appointments
+	if len(appointments) == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
+			Message: "No appointments found",
+		})
+	}
+	return c.JSON(appointments)
+}
+
+func CancelAppointment(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var appointment models.Appointment
+	if err := db.DB.First(&appointment, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
+			Message: "Appointment not found",
+			Error:   err.Error(),
+		})
+	}
+
+	// Prevent cancellation of completed or canceled appointments
+	if appointment.Status == models.StatusCompleted || appointment.Status == models.StatusCanceled {
+		return c.Status(fiber.StatusForbidden).JSON(utils.ErrorResponse{
+			Message: "Cannot cancel a completed or already canceled appointment",
+		})
+	}
+
+	// Update the status to canceled
+	appointment.Status = models.StatusCanceled
+	if err := db.DB.Save(&appointment).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
+			Message: "Failed to cancel appointment",
+			Error:   err.Error(),
+		})
+	}
+	return c.JSON(appointment)
+}
+
 // DeleteAppointment godoc
 func DeleteAppointment(c *fiber.Ctx) error {
 	id := c.Params("id")

@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -29,6 +30,7 @@ func GetAllServices(c *fiber.Ctx) error {
 	return c.JSON(services)
 }
 
+// Get Service By ID
 func GetService(c *fiber.Ctx) error {
 	id, err := c.ParamsInt("id")
 	if err != nil {
@@ -81,6 +83,58 @@ func GetMyServices(c *fiber.Ctx) error {
 	fmt.Printf("Fetched services for user %d: %+v\n", userID, services)
 
 	return c.JSON(services)
+}
+
+// Return List of name of services matched to search Query
+func SearchServiceNames(c *fiber.Ctx) error {
+	search := c.Query("search")
+	if search == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Search query parameter is required",
+		})
+	}
+	search = strings.ToLower(search)
+	var serviceNames []string
+	if err := db.DB.Debug().
+		Model(&models.Service{}). // Specify the Service model
+		Where("LOWER(name) LIKE ?", "%"+search+"%").
+		Pluck("name", &serviceNames).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(serviceNames)
+}
+
+// Search Service By Name
+func SearchServiceByName(c *fiber.Ctx) error {
+	// We just need to return List Of Services Names and Should Compare with the lowerCase name
+	// and return the list of services that match the name
+	name := c.Query("name")
+	if name == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Name query parameter is required",
+		})
+	}
+	name = strings.ToLower(name)
+	var services []models.Service
+	if err := db.DB.Debug().
+		Where("LOWER(name) LIKE ?", "%"+name+"%").
+		Find(&services).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+	if len(services) == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "No services found with the given name",
+		})
+	} else {
+		// Log services for debugging
+		fmt.Printf("Fetched services matching name '%s': %+v\n", name, services)
+		return c.JSON(services)
+	}
 }
 
 func CreateService(c *fiber.Ctx) error {
