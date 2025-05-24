@@ -27,6 +27,7 @@ func SetupAppointmentRoutes(app *fiber.App) {
 	providers.Get("/category/:categoryId", consumer.GetProvidersByCategory)
 	providers.Get("/featured", consumer.GetFeaturedProviders)
 	providers.Get("/nearby", consumer.GetNearbyProviders)
+	providers.Get("/available-time-slots/:provider_id", consumer.GetAvailableSlots)
 
 	//Reviews________________________________________________________________
 	reviewRoutes := app.Group("/reviews", middleware.Protected())
