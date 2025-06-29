@@ -15,8 +15,10 @@ var (
 
 func InitRedis() {
 	Client = redis.NewClient(&redis.Options{
-		Addr: os.Getenv("REDIS_ADDR"),
-		DB:   0,
+		Addr:     os.Getenv("REDIS_HOSTPORT"), // host:port only
+		Username: os.Getenv("REDIS_USERNAME"), // "default"
+		Password: os.Getenv("REDIS_PASSWORD"), // your password
+		DB:       0,
 	})
 
 	// Test connection
