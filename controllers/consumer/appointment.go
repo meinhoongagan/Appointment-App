@@ -12,6 +12,15 @@ import (
 )
 
 // GetAllAppointments godoc
+// @Summary Get all appointments
+// @Description Retrieve a list of all appointments with associated service, provider, and customer details
+// @Tags appointments
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} models.Appointment "List of appointments"
+// @Failure 500 {object} utils.ErrorResponse "Internal server error"
+// @Router /appointments [get]
 func GetAllAppointments(c *fiber.Ctx) error {
 	var appointments []models.Appointment
 	if err := db.DB.Preload("Service").Preload("Provider").Preload("Customer").Find(&appointments).Error; err != nil {
@@ -24,6 +33,16 @@ func GetAllAppointments(c *fiber.Ctx) error {
 }
 
 // GetAppointment godoc
+// @Summary Get appointment by ID
+// @Description Retrieve a specific appointment by its ID with associated service, provider, and customer details
+// @Tags appointments
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Appointment ID"
+// @Success 200 {object} models.Appointment "Appointment details"
+// @Failure 404 {object} utils.ErrorResponse "Appointment not found"
+// @Router /appointments/{id} [get]
 func GetAppointment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var appointment models.Appointment
@@ -36,7 +55,17 @@ func GetAppointment(c *fiber.Ctx) error {
 	return c.JSON(appointment)
 }
 
-// GetServiceDetails returns details for a specific service
+// GetServiceDetails godoc
+// @Summary Get service details by ID
+// @Description Retrieve detailed information about a specific service including provider and category
+// @Tags services
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Service ID"
+// @Success 200 {object} models.Service "Service details"
+// @Failure 404 {object} fiber.Map "Service not found"
+// @Router /appointments/service/{id} [get]
 func GetServiceDetails(c *fiber.Ctx) error {
 	id := c.Params("id")
 
@@ -58,6 +87,19 @@ func GetServiceDetails(c *fiber.Ctx) error {
 }
 
 // CreateAppointment godoc
+// @Summary Create a new appointment
+// @Description Create a new appointment with availability checking, working hours validation, and email notifications
+// @Tags appointments
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param appointment body models.Appointment true "Appointment details"
+// @Success 201 {object} models.Appointment "Created appointment"
+// @Failure 400 {object} utils.ErrorResponse "Bad request - invalid input"
+// @Failure 404 {object} utils.ErrorResponse "Service/Customer/Provider not found"
+// @Failure 409 {object} utils.ErrorResponse "Time slot conflict or outside working hours"
+// @Failure 500 {object} utils.ErrorResponse "Internal server error"
+// @Router /appointments [post]
 func CreateAppointment(c *fiber.Ctx) error {
 	var appointment models.Appointment
 
@@ -243,6 +285,20 @@ func CreateAppointment(c *fiber.Ctx) error {
 }
 
 // UpdateAppointment godoc
+// @Summary Update an existing appointment
+// @Description Update appointment details with availability checking and email notifications
+// @Tags appointments
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Appointment ID"
+// @Param appointment body models.Appointment true "Updated appointment details"
+// @Success 200 {object} models.Appointment "Updated appointment"
+// @Failure 400 {object} utils.ErrorResponse "Bad request - invalid input"
+// @Failure 404 {object} utils.ErrorResponse "Appointment/Service/Customer/Provider not found"
+// @Failure 409 {object} utils.ErrorResponse "Time slot conflict"
+// @Failure 500 {object} utils.ErrorResponse "Internal server error"
+// @Router /appointments/{id} [patch]
 func UpdateAppointment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var updatedAppointment models.Appointment
@@ -406,7 +462,20 @@ func UpdateAppointment(c *fiber.Ctx) error {
 	return c.JSON(updatedAppointment)
 }
 
-// Get Upcoming appointments and history based on Query Params
+// GetUpcomingAppointments godoc
+// @Summary Get upcoming appointments or appointment history
+// @Description Retrieve upcoming appointments or appointment history for the authenticated user based on status query parameter
+// @Tags appointments
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param status query string true "Status filter" Enums(upcoming, history) "Filter by 'upcoming' for future appointments or 'history' for past appointments"
+// @Success 200 {array} models.Appointment "List of appointments"
+// @Failure 400 {object} utils.ErrorResponse "Bad request - invalid or missing status parameter"
+// @Failure 401 {object} utils.ErrorResponse "Unauthorized - invalid user token"
+// @Failure 404 {object} utils.ErrorResponse "No appointments found"
+// @Failure 500 {object} utils.ErrorResponse "Internal server error"
+// @Router /appointments [get]
 func GetUpcomingAppointments(c *fiber.Ctx) error {
 	var appointments []models.Appointment
 	status := c.Query("status")
@@ -455,6 +524,19 @@ func GetUpcomingAppointments(c *fiber.Ctx) error {
 	return c.JSON(appointments)
 }
 
+// CancelAppointment godoc
+// @Summary Cancel an appointment
+// @Description Cancel an existing appointment by changing its status to canceled
+// @Tags appointments
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Appointment ID"
+// @Success 200 {object} models.Appointment "Canceled appointment"
+// @Failure 403 {object} utils.ErrorResponse "Forbidden - cannot cancel completed or already canceled appointment"
+// @Failure 404 {object} utils.ErrorResponse "Appointment not found"
+// @Failure 500 {object} utils.ErrorResponse "Internal server error"
+// @Router /appointments/{id}/cancel [patch]
 func CancelAppointment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var appointment models.Appointment
@@ -484,6 +566,18 @@ func CancelAppointment(c *fiber.Ctx) error {
 }
 
 // DeleteAppointment godoc
+// @Summary Delete an appointment
+// @Description Permanently delete an appointment from the system
+// @Tags appointments
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Appointment ID"
+// @Success 204 "No content - appointment successfully deleted"
+// @Failure 403 {object} utils.ErrorResponse "Forbidden - cannot delete completed or canceled appointment"
+// @Failure 404 {object} utils.ErrorResponse "Appointment not found"
+// @Failure 500 {object} utils.ErrorResponse "Internal server error"
+// @Router /appointments/{id} [delete]
 func DeleteAppointment(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var appointment models.Appointment

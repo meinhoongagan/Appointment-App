@@ -17,6 +17,19 @@ import (
 )
 
 // Register handles user registration
+// Public routes
+// Register handles user registration
+// @Summary Register a new user
+// @Description Registers a user with name, email, and password. Assigns a default role if not provided.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param data body object{name=string,email=string,password=string,role=string} true "User info"
+// @Success 201 {object} models.User
+// @Failure 400 {object} map[string]string
+// @Failure 409 {object} map[string]string
+// @Failure 500 {object} map[string]string
+// @Router /auth/register [post]
 func Register(c *fiber.Ctx) error {
 	user := new(models.User)
 
@@ -101,6 +114,17 @@ func Register(c *fiber.Ctx) error {
 }
 
 // Login handles user authentication
+// Login handles user authentication
+// @Summary Login a user
+// @Description Authenticates a user and returns access + refresh tokens
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param data body object{email=string,password=string} true "Login credentials"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Router /auth/login [post]
 func Login(c *fiber.Ctx) error {
 	type LoginInput struct {
 		Email    string `json:"email"`
@@ -199,6 +223,17 @@ func Login(c *fiber.Ctx) error {
 }
 
 // GetUserProfile returns the current user's profile
+
+// Protected routes
+// GetUserProfile returns the current user's profile
+// @Summary Get current user profile
+// @Description Get the profile of the authenticated user
+// @Tags Auth
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} models.User
+// @Failure 404 {object} map[string]string
+// @Router /auth/me [get]
 func GetUserProfile(c *fiber.Ctx) error {
 	// Get user from context (set by middleware)
 	user := c.Locals("user").(*jwt.Token)
@@ -221,7 +256,14 @@ func GetUserProfile(c *fiber.Ctx) error {
 }
 
 // Logout doesn't actually invalidate the token as JWTs are stateless
-// For a more secure implementation, you'd need to use a token blacklist
+// Logout a user
+// @Summary Logout user
+// @Description Logs out user (stateless in JWT; no actual invalidation)
+// @Tags Auth
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Router /auth/logout [post]
 func Logout(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"message": "Successfully logged out",
@@ -229,6 +271,17 @@ func Logout(c *fiber.Ctx) error {
 }
 
 // GetUserByID returns a user by ID
+// Get user by ID
+// GetUserByID gets a user by ID
+// @Summary Get user by ID
+// @Description Returns user information for given ID
+// @Tags Auth
+// @Security BearerAuth
+// @Produce json
+// @Param id path int true "User ID"
+// @Success 200 {object} models.User
+// @Failure 404 {object} map[string]string
+// @Router /auth/user/{id} [get]
 func GetUserByID(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var user models.User
@@ -245,6 +298,18 @@ func GetUserByID(c *fiber.Ctx) error {
 	return c.JSON(user)
 }
 
+// Send OTP
+// SendOTP sends an OTP to user's email
+// @Summary Send OTP
+// @Description Sends OTP to the provided email for verification
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param data body object{email=string} true "Email for OTP"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Router /auth/send-otp [post]
 func SendOTP(c *fiber.Ctx) error {
 	type OTPRequest struct {
 		Email string `json:"email"`
@@ -286,6 +351,21 @@ func SendOTP(c *fiber.Ctx) error {
 }
 
 // VerifyOTP verifies the OTP for a user
+
+// Verify OTP
+// VerifyOTP verifies OTP for a user
+// @Summary Verify OTP
+// @Description Verifies OTP sent to the email
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param action query string false "Optional action e.g. reset"
+// @Param data body object{email=string,otp=string} true "OTP verification data"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Router /auth/otp/verify/ [post]
 func VerifyOTP(c *fiber.Ctx) error {
 	type OTPRequest struct {
 		Email string `json:"email"`
@@ -354,6 +434,21 @@ func VerifyOTP(c *fiber.Ctx) error {
 }
 
 // ResetPassword handles password reset
+
+// Reset Password
+// ResetPassword resets a user's password
+// @Summary Reset password
+// @Description Resets the password using a token from OTP verification
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param token path string true "Reset token"
+// @Param data body object{email=string,new_password=string} true "Password reset data"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Router /auth/reset-password/{token} [post]
 func ResetPassword(c *fiber.Ctx) error {
 	var requestBody struct {
 		Email       string `json:"email"`
@@ -411,6 +506,17 @@ func ResetPassword(c *fiber.Ctx) error {
 }
 
 // RefreshToken generates a new access token using a refresh token
+// RefreshToken generates new access token
+// @Summary Refresh access token
+// @Description Generates a new access token using a refresh token
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param data body object{refreshToken=string} true "Refresh token"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Router /auth/refresh [post]
 func RefreshToken(c *fiber.Ctx) error {
 	type RefreshRequest struct {
 		RefreshToken string `json:"refreshToken"`

@@ -17,6 +17,16 @@ import (
 )
 
 // GetProviderProfile retrieves the provider's profile information
+// @Summary Get provider profile
+// @Description Retrieve the authenticated provider's personal profile information, including role details
+// @Tags provider-profile
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} object{profile=models.User} "Provider profile"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 404 {object} fiber.Map{error=string} "Provider profile not found"
+// @Router /provider/profile [get]
 func GetProviderProfile(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
@@ -32,7 +42,18 @@ func GetProviderProfile(c *fiber.Ctx) error {
 	})
 }
 
-// Get Buisness Details and Provider Details By ID
+// GetProviderDetailsByID retrieves provider details and business details by provider ID
+// @Summary Get provider details by ID
+// @Description Retrieve provider profile and business details for a specific provider by ID
+// @Tags provider-profile
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Provider ID"
+// @Success 200 {object} object{profile=object{ProviderID=uint,Name=string,Email=string,BusinessDetails=models.BusinessDetails}} "Provider and business details"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 404 {object} fiber.Map{error=string} "Provider or business details not found"
+// @Router /provider/profile/{id} [get]
 func GetProviderDetailsByID(c *fiber.Ctx) error {
 	type Profile struct {
 		ProviderID uint
@@ -72,6 +93,17 @@ func GetProviderDetailsByID(c *fiber.Ctx) error {
 }
 
 // GetAllServicesByProviderID retrieves all services by provider ID
+// @Summary Get all services by provider ID
+// @Description Retrieve a list of all services offered by a specific provider
+// @Tags provider-profile
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path string true "Provider ID"
+// @Success 200 {object} object{services=[]models.Service} "List of services"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 404 {object} fiber.Map{error=string} "No services found for this provider"
+// @Router /provider/profile/services/{id} [get]
 func GetAllServicesByProviderID(c *fiber.Ctx) error {
 	providerID := c.Params("id")
 	var services []models.Service
@@ -86,6 +118,19 @@ func GetAllServicesByProviderID(c *fiber.Ctx) error {
 }
 
 // UpdateProviderProfile updates the provider's personal information
+// @Summary Update provider profile
+// @Description Update the authenticated provider's personal profile information (e.g., name, email)
+// @Tags provider-profile
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body object true "Updated profile information (fields like name, email; id, role, password ignored)"
+// @Success 200 {object} object{message=string,profile=models.User} "Profile updated successfully"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid input"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 404 {object} fiber.Map{error=string} "Provider not found"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/profile [patch]
 func UpdateProviderProfile(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
@@ -132,6 +177,15 @@ func UpdateProviderProfile(c *fiber.Ctx) error {
 }
 
 // GetBusinessDetails retrieves the provider's business details
+// @Summary Get business details
+// @Description Retrieve the authenticated provider's business details; returns default empty details if none exist
+// @Tags provider-profile
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} object{business_details=models.BusinessDetails} "Business details"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Router /provider/profile/business [get]
 func GetBusinessDetails(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
@@ -152,6 +206,18 @@ func GetBusinessDetails(c *fiber.Ctx) error {
 }
 
 // UpdateBusinessDetails updates the provider's business details
+// @Summary Update business details
+// @Description Update or create the authenticated provider's business details
+// @Tags provider-profile
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body models.BusinessDetails true "Updated business details"
+// @Success 200 {object} object{message=string,business_details=models.BusinessDetails} "Business details updated"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid input"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/profile/business [patch]
 func UpdateBusinessDetails(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
@@ -195,6 +261,21 @@ func UpdateBusinessDetails(c *fiber.Ctx) error {
 	})
 }
 
+// UploadBusinessMedia uploads profile picture and certificates for the provider
+// @Summary Upload business media
+// @Description Upload a profile picture (JPEG/PNG) and/or certificates (PDF) for the authenticated provider's business details
+// @Tags provider-profile
+// @Accept multipart/form-data
+// @Produce json
+// @Security BearerAuth
+// @Param profile_picture formData file false "Profile picture (JPEG or PNG)"
+// @Param certificates formData file false "Certificates (PDF)" collectionFormat=multi
+// @Success 200 {object} object{message=string,profile_picture=string,certificate_urls=[]string} "Media uploaded successfully"
+// @Failure 400 {object} utils.ErrorResponse{Message=string,Error=string} "Bad request - invalid file type or form data"
+// @Failure 401 {object} utils.ErrorResponse{Message=string,Error=string} "Unauthorized - invalid or missing token"
+// @Failure 404 {object} utils.ErrorResponse{Message=string,Error=string} "Business details or provider not found"
+// @Failure 500 {object} utils.ErrorResponse{Message=string,Error=string} "Internal server error"
+// @Router /provider/profile/business/upload-media [post]
 func UploadBusinessMedia(c *fiber.Ctx) error {
 	// Assume provider_id is stored in Locals from JWT middleware
 	providerID, ok := c.Locals("userID").(uint)
@@ -365,6 +446,15 @@ func UploadBusinessMedia(c *fiber.Ctx) error {
 }
 
 // GetProviderSettings retrieves the provider's settings
+// @Summary Get provider settings
+// @Description Retrieve the authenticated provider's settings; returns default settings if none exist
+// @Tags provider-profile
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} object{settings=models.ProviderSettings} "Provider settings"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Router /provider/profile/settings [get]
 func GetProviderSettings(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
@@ -387,6 +477,18 @@ func GetProviderSettings(c *fiber.Ctx) error {
 }
 
 // UpdateProviderSettings updates the provider's settings
+// @Summary Update provider settings
+// @Description Update or create the authenticated provider's settings (e.g., notifications, auto-confirm, advance booking days)
+// @Tags provider-profile
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body models.ProviderSettings true "Updated provider settings"
+// @Success 200 {object} object{message=string,settings=models.ProviderSettings} "Settings updated successfully"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid input"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/profile/settings [patch]
 func UpdateProviderSettings(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
@@ -431,6 +533,17 @@ func UpdateProviderSettings(c *fiber.Ctx) error {
 }
 
 // GetWorkingHours retrieves the provider's working hours
+// @Summary Get working hours
+// @Description Retrieve the authenticated provider's working hours
+// @Tags provider-profile
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} object{working_hours=[]models.WorkingHours} "List of working hours"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 404 {object} fiber.Map{error=string} "No working hours found"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/profile/working-hours [get]
 func GetWorkingHours(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
@@ -453,6 +566,19 @@ func GetWorkingHours(c *fiber.Ctx) error {
 	})
 }
 
+// CreateWorkingHours creates new working hours for the provider
+// @Summary Create working hours
+// @Description Create new working hours entries for the authenticated provider
+// @Tags provider-profile
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body []models.WorkingHours true "Array of working hours entries"
+// @Success 200 {object} object{message=string,working_hours=[]models.WorkingHours} "Working hours created successfully"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid input, duplicate days, or invalid times"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/profile/working-hours [post]
 func CreateWorkingHours(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
@@ -572,6 +698,18 @@ func CreateWorkingHours(c *fiber.Ctx) error {
 }
 
 // UpdateWorkingHours updates the provider's working hours
+// @Summary Update working hours
+// @Description Update the authenticated provider's working hours, replacing existing entries
+// @Tags provider-profile
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body []models.WorkingHours true "Array of working hours entries"
+// @Success 200 {object} object{message=string,working_hours=[]models.WorkingHours} "Working hours updated successfully"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid input, duplicate days, or invalid times"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/profile/working-hours [patch]
 func UpdateWorkingHours(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
@@ -717,6 +855,21 @@ func UpdateWorkingHours(c *fiber.Ctx) error {
 	})
 }
 
+// CreateReceptionist creates a new receptionist for the provider
+// @Summary Create receptionist
+// @Description Create a new receptionist user and link them to the authenticated provider, requires 'services' create permission
+// @Tags provider-receptionist
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body models.User true "Receptionist user details (e.g., name, email, password)"
+// @Success 200 {object} models.User "Created receptionist"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid input"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - lacks 'services' create permission"
+// @Failure 404 {object} fiber.Map{error=string} "Provider not found"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/receptionist [post]
 func CreateReceptionist(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
@@ -768,6 +921,18 @@ func CreateReceptionist(c *fiber.Ctx) error {
 	return c.JSON(receptionist)
 }
 
+// GetReceptionistList retrieves the list of receptionists for the provider
+// @Summary Get receptionist list
+// @Description Retrieve a list of receptionists associated with the authenticated provider
+// @Tags provider-receptionist
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} object{receptionists=[]models.User} "List of receptionists"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 404 {object} fiber.Map{error=string} "Provider not found"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/receptionist [get]
 func GetReceptionistList(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
@@ -806,6 +971,20 @@ func GetReceptionistList(c *fiber.Ctx) error {
 
 	return c.JSON(receptionists)
 }
+
+// GetReceptionistByID retrieves a specific receptionist by ID
+// @Summary Get receptionist by ID
+// @Description Retrieve details of a specific receptionist associated with the authenticated provider
+// @Tags provider-receptionist
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Receptionist ID"
+// @Success 200 {object} models.User "Receptionist details"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid receptionist ID"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 404 {object} fiber.Map{error=string} "Provider or receptionist not found"
+// @Router /provider/receptionist/{id} [get]
 func GetReceptionistByID(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
@@ -835,6 +1014,21 @@ func GetReceptionistByID(c *fiber.Ctx) error {
 	return c.JSON(receptionist)
 }
 
+// DeleteReceptionist deletes a receptionist
+// @Summary Delete receptionist
+// @Description Delete a receptionist and their settings associated with the authenticated provider, requires 'services' delete permission
+// @Tags provider-receptionist
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Receptionist ID"
+// @Success 200 {object} object{message=string} "Receptionist deleted successfully"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid receptionist ID"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - lacks 'services' delete permission"
+// @Failure 404 {object} fiber.Map{error=string} "Provider not found"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/receptionist/{id} [delete]
 func DeleteReceptionist(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 

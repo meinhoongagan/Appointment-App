@@ -8,6 +8,17 @@ import (
 	"github.com/meinhoongagan/appointment-app/models"
 )
 
+// GetDashboardOverview returns overview statistics for the dashboard
+// @Summary Get dashboard overview
+// @Description Retrieve overview statistics for the authenticated user's dashboard, including total appointments, status counts, services, and revenue
+// @Tags dashboard
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} object{total_appointments=int64,pending_count=int64,confirmed_count=int64,completed_count=int64,canceled_count=int64,total_services=int64,total_revenue=float64,last_updated=string} "Dashboard overview statistics"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token or role"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/dashboard/overview [get]
 func GetDashboardOverview(c *fiber.Ctx) error {
 	// Get the authenticated user ID from context
 	userID, ok := c.Locals("userID").(uint)
@@ -91,6 +102,17 @@ func GetDashboardOverview(c *fiber.Ctx) error {
 }
 
 // GetRecentAppointments returns the most recent appointments
+// @Summary Get recent appointments
+// @Description Retrieve a list of recent appointments for the authenticated user, filtered by role
+// @Tags dashboard
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param limit query int false "Number of appointments to return (default 5)"
+// @Success 200 {array} models.Appointment "List of recent appointments"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token or role"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/dashboard/recent-appointments [get]
 func GetRecentAppointments(c *fiber.Ctx) error {
 	// Get the authenticated user ID from context
 	userID, ok := c.Locals("userID").(uint)
@@ -146,6 +168,17 @@ func GetRecentAppointments(c *fiber.Ctx) error {
 }
 
 // GetRevenueSummary returns revenue statistics
+// @Summary Get revenue summary
+// @Description Retrieve revenue statistics for the authenticated user, filtered by role and time range
+// @Tags dashboard
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param range query string false "Time range for revenue data (day, week, month, year; default week)"
+// @Success 200 {object} object{data=[]object{date=string,revenue=float64,count=int,services=int},summary=object{total_revenue=float64,total_appointments=int,time_range=string,start_date=string,end_date=string}} "Revenue summary"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token or role"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/dashboard/revenue [get]
 func GetRevenueSummary(c *fiber.Ctx) error {
 	// Get the authenticated user ID from context
 	userID, ok := c.Locals("userID").(uint)
@@ -306,6 +339,15 @@ func GetRevenueSummary(c *fiber.Ctx) error {
 }
 
 // GetQuickActions returns available quick actions for the dashboard
+// @Summary Get quick actions
+// @Description Retrieve a list of quick actions available for the authenticated user's dashboard, based on their role
+// @Tags dashboard
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} object{quick_actions=[]object{id=string,title=string,description=string,icon=string,url=string,color=string},user_id=uint,role=string} "Quick actions list"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token or role"
+// @Router /provider/dashboard/quick-actions [get]
 func GetQuickActions(c *fiber.Ctx) error {
 	// Get the authenticated user ID from context
 	userID, ok := c.Locals("userID").(uint)

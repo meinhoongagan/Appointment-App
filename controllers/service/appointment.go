@@ -10,6 +10,19 @@ import (
 	"github.com/meinhoongagan/appointment-app/utils"
 )
 
+// GetAllAppointments retrieves all appointments for the authenticated provider
+// @Summary Get all provider appointments
+// @Description Retrieve a list of all appointments for the authenticated provider, optionally filtered by status
+// @Tags provider-appointments
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param status query string false "Filter appointments by status (e.g., pending, confirmed, completed, canceled)"
+// @Success 200 {array} models.Appointment "List of appointments"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token or role"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - user is not a provider or admin"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/appointments [get]
 func GetAllAppointments(c *fiber.Ctx) error {
 	appointmentStatus := c.Query("status")
 	var appointments []models.Appointment
@@ -51,6 +64,20 @@ func GetAllAppointments(c *fiber.Ctx) error {
 	return c.JSON(appointments)
 }
 
+// GetAppointmentDetails retrieves details of a specific appointment
+// @Summary Get appointment details
+// @Description Retrieve details of a specific appointment by ID, including service, provider, and customer information
+// @Tags provider-appointments
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Appointment ID"
+// @Success 200 {object} models.Appointment "Appointment details"
+// @Failure 400 {object} utils.ErrorResponse{Message=string,Error=string} "Bad request - invalid appointment ID"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 404 {object} utils.ErrorResponse{Message=string,Error=string} "Appointment not found"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/appointments/{id} [get]
 func GetAppointmentDetails(c *fiber.Ctx) error {
 	appointmentID, err := c.ParamsInt("id")
 	if err != nil {
@@ -72,6 +99,19 @@ func GetAppointmentDetails(c *fiber.Ctx) error {
 }
 
 // GetProviderUpcomingAppointments returns upcoming appointments for the logged-in provider
+// @Summary Get upcoming appointments
+// @Description Retrieve a list of upcoming appointments (pending or confirmed) for the authenticated provider, filtered by date range
+// @Tags provider-appointments
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param limit query int false "Number of appointments to return (default 10)"
+// @Param filter query string false "Date filter (today, tomorrow, week, month; default month)"
+// @Success 200 {object} object{appointments=[]models.Appointment,count=int,filter=string,start_date=string,end_date=string} "List of upcoming appointments"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token or role"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - user is not a provider or admin"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/appointments/upcoming [get]
 func GetProviderUpcomingAppointments(c *fiber.Ctx) error {
 	// Get the authenticated user ID from context
 	userID, ok := c.Locals("userID").(uint)
@@ -167,6 +207,21 @@ func GetProviderUpcomingAppointments(c *fiber.Ctx) error {
 }
 
 // GetProviderAppointmentHistory returns past appointments for the logged-in provider
+// @Summary Get appointment history
+// @Description Retrieve a paginated list of past appointments (completed or canceled) for the authenticated provider, filtered by status and date range
+// @Tags provider-appointments
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param page query int false "Page number (default 1)"
+// @Param limit query int false "Number of appointments per page (default 10)"
+// @Param status query string false "Filter by status (completed, canceled)"
+// @Param range query string false "Date range (week, month, year, all; default month)"
+// @Success 200 {object} object{appointments=[]models.Appointment,total=int64,page=int,limit=int,pages=int64,range=string,status=string} "Appointment history"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token or role"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - user is not a provider or admin"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/appointments/history [get]
 func GetProviderAppointmentHistory(c *fiber.Ctx) error {
 	// Get the authenticated user ID from context
 	userID, ok := c.Locals("userID").(uint)
@@ -298,6 +353,21 @@ func GetProviderAppointmentHistory(c *fiber.Ctx) error {
 }
 
 // UpdateAppointmentStatus updates the status of an appointment (accept/reject)
+// @Summary Update appointment status
+// @Description Update the status of an appointment (confirmed, canceled, completed) for the authenticated provider, requires 'services' update permission
+// @Tags provider-appointments
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Appointment ID"
+// @Param status body object{status=string} true "New status (confirmed, canceled, completed)"
+// @Success 200 {object} object{message=string,appointment=models.Appointment} "Appointment status updated"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid ID, status, or input"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token or role"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - user does not own the appointment or lacks 'services' update permission"
+// @Failure 404 {object} fiber.Map{error=string} "Appointment, provider, or customer not found"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/appointments/{id}/status [patch]
 func UpdateAppointmentStatus(c *fiber.Ctx) error {
 	// Get the authenticated user ID from context
 	userID, ok := c.Locals("userID").(uint)
@@ -427,6 +497,22 @@ func UpdateAppointmentStatus(c *fiber.Ctx) error {
 }
 
 // RescheduleAppointment reschedules an existing appointment
+// @Summary Reschedule appointment
+// @Description Reschedule an existing appointment to a new start time, requires 'services' update permission
+// @Tags provider-appointments
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Appointment ID"
+// @Param start_time body object{start_time=string} true "New start time in RFC3339 format"
+// @Success 200 {object} object{message=string,appointment=models.Appointment} "Appointment rescheduled"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid ID, start time, or appointment status"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token or role"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - user does not own the appointment or lacks 'services' update permission"
+// @Failure 404 {object} fiber.Map{error=string} "Appointment, provider, service, or customer not found"
+// @Failure 409 {object} fiber.Map{error=string} "Conflict - time slot conflicts or outside working hours"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/appointments/{id}/reschedule [patch]
 func RescheduleAppointment(c *fiber.Ctx) error {
 	// Get the authenticated user ID from context
 	userID, ok := c.Locals("userID").(uint)

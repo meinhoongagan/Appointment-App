@@ -7,6 +7,20 @@ import (
 )
 
 // CreateRole creates a new role
+// @Summary Create a new role
+// @Description Create a new role in the system, accessible only to admin users
+// @Tags rbac
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param role body models.Role true "Role details"
+// @Success 201 {object} models.Role "Created role"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid input or missing role name"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - user is not an admin"
+// @Failure 409 {object} fiber.Map{error=string} "Conflict - role with this name already exists"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /rbac/roles [post]
 func CreateRole(c *fiber.Ctx) error {
 	role := new(models.Role)
 
@@ -41,6 +55,17 @@ func CreateRole(c *fiber.Ctx) error {
 }
 
 // GetRoles returns all roles
+// @Summary Get all roles
+// @Description Retrieve a list of all roles in the system, requires 'roles' read permission
+// @Tags rbac
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} models.Role "List of roles"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - missing 'roles' read permission"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /rbac/roles [get]
 func GetRoles(c *fiber.Ctx) error {
 	var roles []models.Role
 
@@ -54,6 +79,20 @@ func GetRoles(c *fiber.Ctx) error {
 }
 
 // CreatePermission creates a new permission
+// @Summary Create a new permission
+// @Description Create a new permission in the system, accessible only to admin users
+// @Tags rbac
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param permission body models.Permission true "Permission details"
+// @Success 201 {object} models.Permission "Created permission"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid input or missing name/resource/action"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - user is not an admin"
+// @Failure 409 {object} fiber.Map{error=string} "Conflict - permission with this name already exists"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /rbac/permissions [post]
 func CreatePermission(c *fiber.Ctx) error {
 	permission := new(models.Permission)
 
@@ -88,6 +127,17 @@ func CreatePermission(c *fiber.Ctx) error {
 }
 
 // GetPermissions returns all permissions
+// @Summary Get all permissions
+// @Description Retrieve a list of all permissions in the system, requires 'permissions' read permission
+// @Tags rbac
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} models.Permission "List of permissions"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - missing 'permissions' read permission"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /rbac/permissions [get]
 func GetPermissions(c *fiber.Ctx) error {
 	var permissions []models.Permission
 
@@ -101,6 +151,20 @@ func GetPermissions(c *fiber.Ctx) error {
 }
 
 // AssignRoleToUser assigns a role to a user
+// @Summary Assign role to user
+// @Description Assign a role to a user by their IDs, accessible only to admin users
+// @Tags rbac
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param input body object{user_id=integer,role_id=integer} true "Role assignment input"
+// @Success 200 {object} fiber.Map{message=string} "Role assigned successfully"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid input"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - user is not an admin"
+// @Failure 404 {object} fiber.Map{error=string} "User or role not found"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /rbac/users/role [post]
 func AssignRoleToUser(c *fiber.Ctx) error {
 	type AssignRoleInput struct {
 		UserID uint `json:"user_id"`
@@ -146,6 +210,21 @@ func AssignRoleToUser(c *fiber.Ctx) error {
 }
 
 // AssignPermissionToRole assigns a permission to a role
+// @Summary Assign permission to role
+// @Description Assign a permission to a role by their IDs, accessible only to admin users
+// @Tags rbac
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param input body object{role_id=integer,permission_id=integer} true "Permission assignment input"
+// @Success 200 {object} fiber.Map{message=string} "Permission assigned successfully"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid input"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - user is not an admin"
+// @Failure 404 {object} fiber.Map{error=string} "Role or permission not found"
+// @Failure 409 {object} fiber.Map{error=string} "Conflict - permission already assigned to role"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /rbac/roles/permission [post]
 func AssignPermissionToRole(c *fiber.Ctx) error {
 	type AssignPermissionInput struct {
 		RoleID       uint `json:"role_id"`

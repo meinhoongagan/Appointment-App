@@ -11,17 +11,22 @@ import (
 )
 
 // GetAllProviders returns all service providers
+// @Summary Get all providers
+// @Description Retrieve a paginated list of all service providers
+// @Tags providers
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param page query int false "Page number" default(1)
+// @Param limit query int false "Number of items per page" default(10)
+// @Success 200 {object} fiber.Map{providers=[]models.User,total=int,page=int,limit=int,pages=int} "List of providers with pagination"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /providers [get]
 func GetAllProviders(c *fiber.Ctx) error {
 	var providers []models.User
-
-	// Get pagination parameters
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	limit, _ := strconv.Atoi(c.Query("limit", "10"))
-
-	// Calculate offset
 	offset := (page - 1) * limit
-
-	// Only return users with the provider role
 	if err := db.DB.Preload("Role").
 		Joins("JOIN roles ON users.role_id = roles.id").
 		Where("roles.name = ?", "provider").
@@ -32,14 +37,11 @@ func GetAllProviders(c *fiber.Ctx) error {
 			"error": "Failed to fetch providers",
 		})
 	}
-
-	// Count total records for pagination
 	var count int64
 	db.DB.Model(&models.User{}).
 		Joins("JOIN roles ON users.role_id = roles.id").
 		Where("roles.name = ?", "provider").
 		Count(&count)
-
 	return c.JSON(fiber.Map{
 		"providers": providers,
 		"total":     count,
@@ -50,9 +52,19 @@ func GetAllProviders(c *fiber.Ctx) error {
 }
 
 // GetProviderDetails returns details for a specific provider
+// @Summary Get provider details
+// @Description Retrieve details for a specific provider including working hours and business details
+// @Tags providers
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Provider ID"
+// @Success 200 {object} fiber.Map{provider=models.User,business_details=models.BusinessDetails} "Provider details"
+// @Failure 404 {object} fiber.Map{error=string} "Provider not found"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /providers/{id} [get]
 func GetProviderDetails(c *fiber.Ctx) error {
 	id := c.Params("id")
-
 	var provider models.User
 	if err := db.DB.Preload("Role").
 		Preload("WorkingHours").
@@ -61,21 +73,14 @@ func GetProviderDetails(c *fiber.Ctx) error {
 			"error": "Provider not found",
 		})
 	}
-
-	// Check if the user is a provider
 	if provider.Role.Name != "provider" {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "User is not a service provider",
 		})
 	}
-
-	// Get business details separately
 	var businessDetails models.BusinessDetails
 	db.DB.Where("provider_id = ?", id).First(&businessDetails)
-
-	// Remove sensitive information
 	provider.Password = ""
-
 	return c.JSON(fiber.Map{
 		"provider":         provider,
 		"business_details": businessDetails,
@@ -83,29 +88,46 @@ func GetProviderDetails(c *fiber.Ctx) error {
 }
 
 // GetProviderServices returns services offered by a specific provider
+// @Summary Get provider services
+// @Description Retrieve services offered by a specific provider
+// @Tags providers
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Provider ID"
+// @Success 200 {array} models.Service "List of services"
+// @Failure 404 {object} fiber.Map{error=string} "Provider not found"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /providers/{id}/services [get]
 func GetProviderServices(c *fiber.Ctx) error {
 	id := c.Params("id")
-
-	// Check if the provider exists
 	var provider models.User
 	if err := db.DB.First(&provider, id).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Provider not found",
 		})
 	}
-
-	// Get provider's services
 	var services []models.Service
 	if err := db.DB.Where("provider_id = ?", id).Find(&services).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch provider services",
 		})
 	}
-
 	return c.JSON(services)
 }
 
 // SearchProviders searches for providers by name, business name, or service
+// @Summary Search providers
+// @Description Search for providers by name, business name, or service
+// @Tags providers
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param q query string true "Search query"
+// @Success 200 {object} fiber.Map{providers=[]models.User,count=int} "List of providers"
+// @Failure 400 {object} fiber.Map{error=string} "Search query is required"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /providers/search/service [get]
 func SearchProviders(c *fiber.Ctx) error {
 	query := c.Query("q")
 	if query == "" {
@@ -113,12 +135,8 @@ func SearchProviders(c *fiber.Ctx) error {
 			"error": "Search query is required",
 		})
 	}
-
 	var providers []models.User
-
-	// Search in providers and their business details
 	searchQuery := fmt.Sprintf("%%%s%%", query)
-
 	if err := db.DB.Preload("Role").
 		Joins("JOIN roles ON users.role_id = roles.id").
 		Joins("LEFT JOIN business_details ON users.id = business_details.provider_id").
@@ -130,25 +148,29 @@ func SearchProviders(c *fiber.Ctx) error {
 			"error": "Failed to search providers",
 		})
 	}
-
-	// Clean sensitive data
 	for i := range providers {
 		providers[i].Password = ""
 	}
-
 	return c.JSON(fiber.Map{
 		"providers": providers,
 		"count":     len(providers),
 	})
 }
 
-// GetProvidersByCategory returns providers that offer services in a specific category
+// GetProvidersByCategory returns providers by category
+// @Summary Get providers by category
+// @Description Retrieve providers that offer services in a specific category
+// @Tags providers
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param categoryId path int true "Category ID"
+// @Success 200 {object} fiber.Map{providers=[]models.User,count=int} "List of providers"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /providers/category/{categoryId} [get]
 func GetProvidersByCategory(c *fiber.Ctx) error {
 	categoryId := c.Params("categoryId")
-
 	var providers []models.User
-
-	// Get providers that offer services in the specified category
 	if err := db.DB.Preload("Role").
 		Joins("JOIN roles ON users.role_id = roles.id").
 		Joins("JOIN services ON users.id = services.provider_id").
@@ -160,23 +182,27 @@ func GetProvidersByCategory(c *fiber.Ctx) error {
 			"error": "Failed to fetch providers by category",
 		})
 	}
-
-	// Clean sensitive data
 	for i := range providers {
 		providers[i].Password = ""
 	}
-
 	return c.JSON(fiber.Map{
 		"providers": providers,
 		"count":     len(providers),
 	})
 }
 
-// GetFeaturedProviders returns featured or top-rated providers
+// GetFeaturedProviders returns featured providers
+// @Summary Get featured providers
+// @Description Retrieve a list of featured or top-rated providers
+// @Tags providers
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} fiber.Map{providers=[]models.User} "List of providers"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /providers/featured [get]
 func GetFeaturedProviders(c *fiber.Ctx) error {
 	var providers []models.User
-
-	// Get top-rated providers (this would typically include rating logic)
 	if err := db.DB.Preload("Role").
 		Joins("JOIN roles ON users.role_id = roles.id").
 		Where("roles.name = ?", "provider").
@@ -186,34 +212,38 @@ func GetFeaturedProviders(c *fiber.Ctx) error {
 			"error": "Failed to fetch featured providers",
 		})
 	}
-
-	// Clean sensitive data
 	for i := range providers {
 		providers[i].Password = ""
 	}
-
 	return c.JSON(fiber.Map{
 		"providers": providers,
 	})
 }
 
 // GetNearbyProviders returns providers near the user's location
+// @Summary Get nearby providers
+// @Description Retrieve providers near the user's location based on latitude, longitude, and radius
+// @Tags providers
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param lat query string true "Latitude"
+// @Param lng query string true "Longitude"
+// @Param radius query string false "Radius in kilometers" default(10)
+// @Success 200 {object} fiber.Map{providers=[]models.User,radius=string,lat=string,lng=string} "List of nearby providers"
+// @Failure 400 {object} fiber.Map{error=string} "Location parameters (lat, lng) are required"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /providers/nearby [get]
 func GetNearbyProviders(c *fiber.Ctx) error {
-	// Get location from query parameters
 	latitude := c.Query("lat")
 	longitude := c.Query("lng")
-	radius := c.Query("radius", "10") // Default radius: 10km
-
+	radius := c.Query("radius", "10")
 	if latitude == "" || longitude == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Location parameters (lat, lng) are required",
 		})
 	}
-
-	// In a real implementation, you would use a geospatial query
-	// For now, we'll just return providers as if they were nearby
 	var providers []models.User
-
 	if err := db.DB.Preload("Role").
 		Joins("JOIN roles ON users.role_id = roles.id").
 		Joins("JOIN business_details ON users.id = business_details.provider_id").
@@ -224,12 +254,9 @@ func GetNearbyProviders(c *fiber.Ctx) error {
 			"error": "Failed to fetch nearby providers",
 		})
 	}
-
-	// Clean sensitive data
 	for i := range providers {
 		providers[i].Password = ""
 	}
-
 	return c.JSON(fiber.Map{
 		"providers": providers,
 		"radius":    radius,
@@ -238,30 +265,37 @@ func GetNearbyProviders(c *fiber.Ctx) error {
 	})
 }
 
-// GetAvailableSlots returns available appointment slots for a provider on a given date
+// GetAvailableSlots returns available appointment slots
+// @Summary Get available appointment slots
+// @Description Retrieve available appointment slots for a provider on a given date
+// @Tags providers
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param provider_id path int true "Provider ID"
+// @Param date query string true "Date in YYYY-MM-DD format"
+// @Param service_id query int true "Service ID"
+// @Success 200 {object} fiber.Map{slots=[]string,provider_id=string,date=string,service_id=string} "Available slots"
+// @Failure 400 {object} fiber.Map{error=string} "Invalid date format or missing service ID"
+// @Failure 404 {object} fiber.Map{error=string} "Service not found or does not belong to provider"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /providers/available-time-slots/{provider_id} [get]
 func GetAvailableSlots(c *fiber.Ctx) error {
-	// Define IST location
 	ist, err := time.LoadLocation("Asia/Kolkata")
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to load IST timezone",
 		})
 	}
-
-	// Get query parameters
 	providerID := c.Params("provider_id")
-	dateStr := c.Query("date")         // Expected format: "YYYY-MM-DD"
-	serviceID := c.Query("service_id") // Required
-
-	// Parse the date in IST
+	dateStr := c.Query("date")
+	serviceID := c.Query("service_id")
 	date, err := time.ParseInLocation("2006-01-02", dateStr, ist)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid date format, use YYYY-MM-DD",
 		})
 	}
-
-	// Validate service exists and belongs to provider
 	if serviceID == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Service ID is required",
@@ -273,8 +307,6 @@ func GetAvailableSlots(c *fiber.Ctx) error {
 			"error": "Service not found or does not belong to provider",
 		})
 	}
-
-	// Get working hours for the day of the week
 	dayOfWeek := models.DayOfWeek(date.Weekday())
 	var workingHours models.WorkingHours
 	if err := db.DB.Where("provider_id = ? AND day_of_week = ?", providerID, dayOfWeek).First(&workingHours).Error; err != nil {
@@ -283,8 +315,6 @@ func GetAvailableSlots(c *fiber.Ctx) error {
 			"message": fmt.Sprintf("No working hours defined for %s", date.Weekday()),
 		})
 	}
-
-	// Parse working hours in IST
 	startTime, err := time.ParseInLocation("15:04", workingHours.StartTime, ist)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -297,12 +327,8 @@ func GetAvailableSlots(c *fiber.Ctx) error {
 			"error": "Invalid end time format",
 		})
 	}
-
-	// Combine date with working hours
 	startDateTime := time.Date(date.Year(), date.Month(), date.Day(), startTime.Hour(), startTime.Minute(), 0, 0, ist)
 	endDateTime := time.Date(date.Year(), date.Month(), date.Day(), endTime.Hour(), endTime.Minute(), 0, 0, ist)
-
-	// Handle break times if defined
 	var breakStart, breakEnd *time.Time
 	if workingHours.BreakStart != nil && workingHours.BreakEnd != nil {
 		bs, err := time.ParseInLocation("15:04", *workingHours.BreakStart, ist)
@@ -316,11 +342,7 @@ func GetAvailableSlots(c *fiber.Ctx) error {
 			breakEnd = &beTime
 		}
 	}
-
-	// Get service duration and buffer time
 	slotDuration := service.Duration + service.BufferTime
-
-	// Get existing appointments for the date in IST
 	startOfDay := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, ist)
 	endOfDay := startOfDay.Add(24 * time.Hour)
 	var appointments []models.Appointment
@@ -330,20 +352,15 @@ func GetAvailableSlots(c *fiber.Ctx) error {
 			"error": "Failed to fetch appointments",
 		})
 	}
-
-	// Calculate available slots
 	var availableSlots []string
 	currentSlot := startDateTime
 	for currentSlot.Add(slotDuration).Before(endDateTime) || currentSlot.Add(slotDuration).Equal(endDateTime) {
-		// Skip if slot is during break
 		if breakStart != nil && breakEnd != nil {
 			if (currentSlot.Equal(*breakStart) || currentSlot.After(*breakStart)) && currentSlot.Before(*breakEnd) {
 				currentSlot = currentSlot.Add(slotDuration)
 				continue
 			}
 		}
-
-		// Check if slot is available (no overlap with appointments)
 		isAvailable := true
 		slotEnd := currentSlot.Add(slotDuration)
 		for _, appt := range appointments {
@@ -353,13 +370,11 @@ func GetAvailableSlots(c *fiber.Ctx) error {
 				break
 			}
 		}
-
 		if isAvailable {
 			availableSlots = append(availableSlots, currentSlot.Format("15:04"))
 		}
 		currentSlot = currentSlot.Add(slotDuration)
 	}
-
 	return c.JSON(fiber.Map{
 		"slots":       availableSlots,
 		"provider_id": providerID,

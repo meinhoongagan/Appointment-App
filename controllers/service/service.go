@@ -12,6 +12,14 @@ import (
 )
 
 // GetAllServices returns all services
+// @Summary Get all services
+// @Description Retrieve a list of all services with their provider details
+// @Tags services
+// @Accept json
+// @Produce json
+// @Success 200 {array} models.Service "List of services"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/services [get]
 func GetAllServices(c *fiber.Ctx) error {
 	var services []models.Service
 
@@ -30,7 +38,17 @@ func GetAllServices(c *fiber.Ctx) error {
 	return c.JSON(services)
 }
 
-// Get Service By ID
+// GetService retrieves a specific service by ID
+// @Summary Get service by ID
+// @Description Retrieve a specific service by its ID with provider details
+// @Tags services
+// @Accept json
+// @Produce json
+// @Param id path int true "Service ID"
+// @Success 200 {object} models.Service "Service details"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid service ID"
+// @Failure 404 {object} fiber.Map{error=string} "Service not found"
+// @Router /provider/services/{id} [get]
 func GetService(c *fiber.Ctx) error {
 	id, err := c.ParamsInt("id")
 	if err != nil {
@@ -48,6 +66,17 @@ func GetService(c *fiber.Ctx) error {
 }
 
 // GetMyServices returns all services of the authenticated provider
+// @Summary Get provider's services
+// @Description Retrieve all services created by the authenticated provider or their receptionist
+// @Tags services
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} models.Service "List of provider's services"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - user is not a provider or receptionist"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/services/get-provider/service [get]
 func GetMyServices(c *fiber.Ctx) error {
 	userIDVal := c.Locals("userID")
 	fmt.Println("User ID from locals:", userIDVal)
@@ -85,7 +114,17 @@ func GetMyServices(c *fiber.Ctx) error {
 	return c.JSON(services)
 }
 
-// Return List of name of services matched to search Query
+// SearchServiceNames returns a list of service names matching the search query
+// @Summary Search service names
+// @Description Retrieve a list of service names that match the search query
+// @Tags services
+// @Accept json
+// @Produce json
+// @Param search query string true "Search query for service names"
+// @Success 200 {array} string "List of matching service names"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - missing search query"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/services/names/search/names [get]
 func SearchServiceNames(c *fiber.Ctx) error {
 	search := c.Query("search")
 	if search == "" {
@@ -107,7 +146,18 @@ func SearchServiceNames(c *fiber.Ctx) error {
 	return c.JSON(serviceNames)
 }
 
-// Search Service By Name
+// SearchServiceByName searches services by name
+// @Summary Search services by name
+// @Description Retrieve a list of services whose names match the search query
+// @Tags services
+// @Accept json
+// @Produce json
+// @Param name query string true "Service name to search for"
+// @Success 200 {array} models.Service "List of matching services"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - missing name query"
+// @Failure 404 {object} fiber.Map{error=string} "No services found with the given name"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/services/search/name [get]
 func SearchServiceByName(c *fiber.Ctx) error {
 	// We just need to return List Of Services Names and Should Compare with the lowerCase name
 	// and return the list of services that match the name
@@ -137,6 +187,21 @@ func SearchServiceByName(c *fiber.Ctx) error {
 	}
 }
 
+// CreateService creates a new service
+// @Summary Create a new service
+// @Description Create a new service for the authenticated provider, requires 'services' create permission
+// @Tags services
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param service body models.Service true "Service details"
+// @Success 200 {object} models.Service "Created service"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid input"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - user is not a provider or lacks 'services' create permission"
+// @Failure 404 {object} fiber.Map{error=string} "Provider not found"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/services [post]
 func CreateService(c *fiber.Ctx) error {
 	// Extract userID from JWT
 	userID, ok := c.Locals("userID").(uint)
@@ -185,6 +250,21 @@ func CreateService(c *fiber.Ctx) error {
 }
 
 // UpdateService updates a service
+// @Summary Update a service
+// @Description Update an existing service by its ID, requires 'services' update permission
+// @Tags services
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Service ID"
+// @Param service body object true "Service update details (partial)"
+// @Success 200 {object} models.Service "Updated service"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid input or service ID"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - user lacks permission or does not own the service"
+// @Failure 404 {object} fiber.Map{error=string} "Service not found"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/services/{id} [patch]
 func UpdateService(c *fiber.Ctx) error {
 	// Parse service ID from URL parameter
 	id, err := c.ParamsInt("id")
@@ -321,6 +401,20 @@ func UpdateService(c *fiber.Ctx) error {
 }
 
 // DeleteService deletes a service
+// @Summary Delete a service
+// @Description Delete a service by its ID, requires 'services' delete permission
+// @Tags services
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Service ID"
+// @Success 204 "No content - service successfully deleted"
+// @Failure 400 {object} fiber.Map{error=string} "Bad request - invalid service ID"
+// @Failure 401 {object} fiber.Map{error=string} "Unauthorized - invalid or missing token"
+// @Failure 403 {object} fiber.Map{error=string} "Forbidden - user lacks permission or does not own the service"
+// @Failure 404 {object} fiber.Map{error=string} "Service not found"
+// @Failure 500 {object} fiber.Map{error=string} "Internal server error"
+// @Router /provider/services/{id} [delete]
 func DeleteService(c *fiber.Ctx) error {
 	// Parse service ID from URL parameter
 	id, err := c.ParamsInt("id")

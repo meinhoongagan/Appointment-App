@@ -1,0 +1,4582 @@
+basePath: /
+definitions:
+  consumer.UserDetailsInput:
+    properties:
+      favorite_service_ids:
+        items:
+          type: integer
+        type: array
+    type: object
+  consumer.UserProfile:
+    properties:
+      email:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      user_details:
+        $ref: '#/definitions/models.UserDetails'
+    type: object
+  fiber.Map:
+    additionalProperties: true
+    type: object
+  gorm.DeletedAt:
+    properties:
+      time:
+        type: string
+      valid:
+        description: Valid is true if Time is not NULL
+        type: boolean
+    type: object
+  models.Appointment:
+    properties:
+      createdAt:
+        type: string
+      customer:
+        $ref: '#/definitions/models.User'
+      customer_id:
+        type: integer
+      deletedAt:
+        $ref: '#/definitions/gorm.DeletedAt'
+      description:
+        type: string
+      end_time:
+        type: string
+      id:
+        type: integer
+      is_recurring:
+        type: boolean
+      provider:
+        $ref: '#/definitions/models.User'
+      provider_id:
+        type: integer
+      recur_pattern:
+        allOf:
+        - $ref: '#/definitions/models.Recurrence'
+        description: E.g., "weekly", "monthly", "daily"
+      recur_pattern_id:
+        type: integer
+      service:
+        $ref: '#/definitions/models.Service'
+      service_id:
+        type: integer
+      start_time:
+        type: string
+      status:
+        $ref: '#/definitions/models.AppointmentStatus'
+      title:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  models.AppointmentStatus:
+    enum:
+    - pending
+    - confirmed
+    - canceled
+    - completed
+    type: string
+    x-enum-varnames:
+    - StatusPending
+    - StatusConfirmed
+    - StatusCanceled
+    - StatusCompleted
+  models.BusinessDetails:
+    properties:
+      address:
+        type: string
+      business_hours:
+        type: string
+      business_license:
+        type: string
+      business_name:
+        type: string
+      certificate_urls:
+        type: string
+      city:
+        type: string
+      country:
+        type: string
+      createdAt:
+        type: string
+      deletedAt:
+        $ref: '#/definitions/gorm.DeletedAt'
+      description:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+      phone_number:
+        type: string
+      profile_picture_url:
+        type: string
+      provider_id:
+        type: integer
+      state:
+        type: string
+      tax_number:
+        type: string
+      updatedAt:
+        type: string
+      website:
+        type: string
+      zip_code:
+        type: string
+    type: object
+  models.DayOfWeek:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    type: integer
+    x-enum-varnames:
+    - Sunday
+    - Monday
+    - Tuesday
+    - Wednesday
+    - Thursday
+    - Friday
+    - Saturday
+  models.Permission:
+    properties:
+      action:
+        description: e.g., "create", "read", "update", "delete"
+        type: string
+      created_at:
+        type: string
+      deleted_at:
+        $ref: '#/definitions/gorm.DeletedAt'
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      resource:
+        description: e.g., "appointments", "users", etc.
+        type: string
+      roles:
+        items:
+          $ref: '#/definitions/models.Role'
+        type: array
+      updated_at:
+        type: string
+    type: object
+  models.ProviderSettings:
+    properties:
+      advance_booking_days:
+        type: integer
+      auto_confirm_bookings:
+        type: boolean
+      closing_end_date:
+        type: string
+      closing_remarks:
+        type: string
+      closing_start_date:
+        type: string
+      createdAt:
+        type: string
+      currency:
+        type: string
+      deletedAt:
+        $ref: '#/definitions/gorm.DeletedAt'
+      id:
+        type: integer
+      language:
+        type: string
+      notifications_enabled:
+        type: boolean
+      provider_id:
+        type: integer
+      time_zone:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  models.Recurrence:
+    properties:
+      appointment_id:
+        type: integer
+      createdAt:
+        type: string
+      deletedAt:
+        $ref: '#/definitions/gorm.DeletedAt'
+      end_after:
+        description: Number of occurrences
+        type: integer
+      frequency:
+        description: '"daily", "weekly", "monthly"'
+        type: string
+      id:
+        type: integer
+      next_run:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  models.Role:
+    properties:
+      created_at:
+        type: string
+      deleted_at:
+        $ref: '#/definitions/gorm.DeletedAt'
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      permissions:
+        items:
+          $ref: '#/definitions/models.Permission'
+        type: array
+      updated_at:
+        type: string
+    type: object
+  models.Service:
+    properties:
+      buffer_time:
+        allOf:
+        - $ref: '#/definitions/time.Duration'
+        description: Time between appointments
+      cost:
+        type: number
+      createdAt:
+        type: string
+      deletedAt:
+        $ref: '#/definitions/gorm.DeletedAt'
+      description:
+        type: string
+      discount:
+        description: Discount percentage
+        type: number
+      discounted_price:
+        type: number
+      duration:
+        $ref: '#/definitions/time.Duration'
+      id:
+        type: integer
+      name:
+        type: string
+      provider:
+        $ref: '#/definitions/models.User'
+      provider_id:
+        type: integer
+      updatedAt:
+        type: string
+    type: object
+  models.User:
+    properties:
+      appointments:
+        items:
+          $ref: '#/definitions/models.Appointment'
+        type: array
+      created_at:
+        type: string
+      customer_appointments:
+        items:
+          $ref: '#/definitions/models.Appointment'
+        type: array
+      email:
+        type: string
+      id:
+        type: integer
+      is_verified:
+        type: boolean
+      name:
+        type: string
+      otp:
+        type: string
+      otp_expires_at:
+        type: string
+      password:
+        type: string
+      provided_services:
+        items:
+          $ref: '#/definitions/models.Service'
+        type: array
+      role:
+        $ref: '#/definitions/models.Role'
+      role_id:
+        type: integer
+      updated_at:
+        type: string
+      working_hours:
+        items:
+          $ref: '#/definitions/models.WorkingHours'
+        type: array
+    type: object
+  models.UserDetails:
+    properties:
+      createdAt:
+        type: string
+      deletedAt:
+        $ref: '#/definitions/gorm.DeletedAt'
+      favorite_services:
+        items:
+          $ref: '#/definitions/models.Service'
+        type: array
+      id:
+        type: integer
+      profile_picture:
+        type: string
+      updatedAt:
+        type: string
+      user:
+        $ref: '#/definitions/models.User'
+      user_id:
+        type: integer
+    type: object
+  models.WorkingHours:
+    properties:
+      break_end:
+        description: Optional break end time
+        type: string
+      break_start:
+        description: Optional break start time
+        type: string
+      createdAt:
+        type: string
+      day_of_week:
+        $ref: '#/definitions/models.DayOfWeek'
+      deletedAt:
+        $ref: '#/definitions/gorm.DeletedAt'
+      end_time:
+        description: Format "HH:MM" in 24h
+        type: string
+      id:
+        type: integer
+      provider:
+        $ref: '#/definitions/models.User'
+      provider_id:
+        type: integer
+      start_time:
+        description: Format "HH:MM" in 24h
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  time.Duration:
+    enum:
+    - -9223372036854775808
+    - 9223372036854775807
+    - 1
+    - 1000
+    - 1000000
+    - 1000000000
+    - 60000000000
+    - 3600000000000
+    type: integer
+    x-enum-varnames:
+    - minDuration
+    - maxDuration
+    - Nanosecond
+    - Microsecond
+    - Millisecond
+    - Second
+    - Minute
+    - Hour
+  utils.ErrorResponse:
+    properties:
+      error:
+        type: string
+      message:
+        type: string
+    type: object
+host: localhost:8000
+info:
+  contact: {}
+  description: This is the API documentation for the Appointment App.
+  title: Appointment App API
+  version: "1.0"
+paths:
+  /appointments:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve upcoming appointments or appointment history for the authenticated
+        user based on status query parameter
+      parameters:
+      - description: Status filter
+        enum:
+        - upcoming
+        - history
+        in: query
+        name: status
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of appointments
+          schema:
+            items:
+              $ref: '#/definitions/models.Appointment'
+            type: array
+        "400":
+          description: Bad request - invalid or missing status parameter
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Unauthorized - invalid user token
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: No appointments found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get upcoming appointments or appointment history
+      tags:
+      - appointments
+    post:
+      consumes:
+      - application/json
+      description: Create a new appointment with availability checking, working hours
+        validation, and email notifications
+      parameters:
+      - description: Appointment details
+        in: body
+        name: appointment
+        required: true
+        schema:
+          $ref: '#/definitions/models.Appointment'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created appointment
+          schema:
+            $ref: '#/definitions/models.Appointment'
+        "400":
+          description: Bad request - invalid input
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: Service/Customer/Provider not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "409":
+          description: Time slot conflict or outside working hours
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a new appointment
+      tags:
+      - appointments
+  /appointments/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Permanently delete an appointment from the system
+      parameters:
+      - description: Appointment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No content - appointment successfully deleted
+        "403":
+          description: Forbidden - cannot delete completed or canceled appointment
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: Appointment not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete an appointment
+      tags:
+      - appointments
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a specific appointment by its ID with associated service,
+        provider, and customer details
+      parameters:
+      - description: Appointment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Appointment details
+          schema:
+            $ref: '#/definitions/models.Appointment'
+        "404":
+          description: Appointment not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get appointment by ID
+      tags:
+      - appointments
+    patch:
+      consumes:
+      - application/json
+      description: Update appointment details with availability checking and email
+        notifications
+      parameters:
+      - description: Appointment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Updated appointment details
+        in: body
+        name: appointment
+        required: true
+        schema:
+          $ref: '#/definitions/models.Appointment'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated appointment
+          schema:
+            $ref: '#/definitions/models.Appointment'
+        "400":
+          description: Bad request - invalid input
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: Appointment/Service/Customer/Provider not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "409":
+          description: Time slot conflict
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update an existing appointment
+      tags:
+      - appointments
+  /appointments/{id}/cancel:
+    patch:
+      consumes:
+      - application/json
+      description: Cancel an existing appointment by changing its status to canceled
+      parameters:
+      - description: Appointment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Canceled appointment
+          schema:
+            $ref: '#/definitions/models.Appointment'
+        "403":
+          description: Forbidden - cannot cancel completed or already canceled appointment
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "404":
+          description: Appointment not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Cancel an appointment
+      tags:
+      - appointments
+  /appointments/service/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve detailed information about a specific service including
+        provider and category
+      parameters:
+      - description: Service ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Service details
+          schema:
+            $ref: '#/definitions/models.Service'
+        "404":
+          description: Service not found
+          schema:
+            $ref: '#/definitions/fiber.Map'
+      security:
+      - BearerAuth: []
+      summary: Get service details by ID
+      tags:
+      - services
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates a user and returns access + refresh tokens
+      parameters:
+      - description: Login credentials
+        in: body
+        name: data
+        required: true
+        schema:
+          properties:
+            email:
+              type: string
+            password:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Login a user
+      tags:
+      - Auth
+  /auth/logout:
+    post:
+      description: Logs out user (stateless in JWT; no actual invalidation)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Logout user
+      tags:
+      - Auth
+  /auth/me:
+    get:
+      description: Get the profile of the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get current user profile
+      tags:
+      - Auth
+  /auth/otp/verify/:
+    post:
+      consumes:
+      - application/json
+      description: Verifies OTP sent to the email
+      parameters:
+      - description: Optional action e.g. reset
+        in: query
+        name: action
+        type: string
+      - description: OTP verification data
+        in: body
+        name: data
+        required: true
+        schema:
+          properties:
+            email:
+              type: string
+            otp:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Verify OTP
+      tags:
+      - Auth
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Generates a new access token using a refresh token
+      parameters:
+      - description: Refresh token
+        in: body
+        name: data
+        required: true
+        schema:
+          properties:
+            refreshToken:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Refresh access token
+      tags:
+      - Auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Registers a user with name, email, and password. Assigns a default
+        role if not provided.
+      parameters:
+      - description: User info
+        in: body
+        name: data
+        required: true
+        schema:
+          properties:
+            email:
+              type: string
+            name:
+              type: string
+            password:
+              type: string
+            role:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Register a new user
+      tags:
+      - Auth
+  /auth/reset-password/{token}:
+    post:
+      consumes:
+      - application/json
+      description: Resets the password using a token from OTP verification
+      parameters:
+      - description: Reset token
+        in: path
+        name: token
+        required: true
+        type: string
+      - description: Password reset data
+        in: body
+        name: data
+        required: true
+        schema:
+          properties:
+            email:
+              type: string
+            new_password:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Reset password
+      tags:
+      - Auth
+  /auth/send-otp:
+    post:
+      consumes:
+      - application/json
+      description: Sends OTP to the provided email for verification
+      parameters:
+      - description: Email for OTP
+        in: body
+        name: data
+        required: true
+        schema:
+          properties:
+            email:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Send OTP
+      tags:
+      - Auth
+  /auth/user/{id}:
+    get:
+      description: Returns user information for given ID
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get user by ID
+      tags:
+      - Auth
+  /consumer/profile:
+    delete:
+      consumes:
+      - application/json
+      description: Delete the user details for the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User details deleted successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                message:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid user token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Delete user profile
+      tags:
+      - consumer
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the profile details of the authenticated user, including
+        user details and favorite services
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User profile details
+          schema:
+            $ref: '#/definitions/consumer.UserProfile'
+        "401":
+          description: Unauthorized - invalid user token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: User details not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get user profile
+      tags:
+      - consumer
+    patch:
+      consumes:
+      - application/json
+      description: Update the user details for the authenticated user, including favorite
+        services
+      parameters:
+      - description: Updated user details input
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/consumer.UserDetailsInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated user details
+          schema:
+            $ref: '#/definitions/models.UserDetails'
+        "400":
+          description: Invalid input
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid user token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Update user profile
+      tags:
+      - consumer
+    post:
+      consumes:
+      - application/json
+      description: Create user details for the authenticated user, including favorite
+        services
+      parameters:
+      - description: User details input
+        in: body
+        name: input
+        required: true
+        schema:
+          $ref: '#/definitions/consumer.UserDetailsInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created user details
+          schema:
+            $ref: '#/definitions/models.UserDetails'
+        "400":
+          description: Invalid input
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid user token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Create user profile
+      tags:
+      - consumer
+  /consumer/profile/picture:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload and update the profile picture for the authenticated user
+        using Cloudinary
+      parameters:
+      - description: Profile picture file
+        in: formData
+        name: profile_picture
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated user details with profile picture URL
+          schema:
+            $ref: '#/definitions/models.UserDetails'
+        "400":
+          description: Failed to get profile picture
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid user token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Update user profile picture
+      tags:
+      - consumer
+  /provider/appointments:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a list of all appointments for the authenticated provider,
+        optionally filtered by status
+      parameters:
+      - description: Filter appointments by status (e.g., pending, confirmed, completed,
+          canceled)
+        in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of appointments
+          schema:
+            items:
+              $ref: '#/definitions/models.Appointment'
+            type: array
+        "401":
+          description: Unauthorized - invalid or missing token or role
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - user is not a provider or admin
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get all provider appointments
+      tags:
+      - provider-appointments
+  /provider/appointments/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve details of a specific appointment by ID, including service,
+        provider, and customer information
+      parameters:
+      - description: Appointment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Appointment details
+          schema:
+            $ref: '#/definitions/models.Appointment'
+        "400":
+          description: Bad request - invalid appointment ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.ErrorResponse'
+            - properties:
+                Error:
+                  type: string
+                Message:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Appointment not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.ErrorResponse'
+            - properties:
+                Error:
+                  type: string
+                Message:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get appointment details
+      tags:
+      - provider-appointments
+  /provider/appointments/{id}/reschedule:
+    patch:
+      consumes:
+      - application/json
+      description: Reschedule an existing appointment to a new start time, requires
+        'services' update permission
+      parameters:
+      - description: Appointment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: New start time in RFC3339 format
+        in: body
+        name: start_time
+        required: true
+        schema:
+          properties:
+            start_time:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Appointment rescheduled
+          schema:
+            properties:
+              appointment:
+                $ref: '#/definitions/models.Appointment'
+              message:
+                type: string
+            type: object
+        "400":
+          description: Bad request - invalid ID, start time, or appointment status
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token or role
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - user does not own the appointment or lacks 'services'
+            update permission
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Appointment, provider, service, or customer not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "409":
+          description: Conflict - time slot conflicts or outside working hours
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Reschedule appointment
+      tags:
+      - provider-appointments
+  /provider/appointments/{id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: Update the status of an appointment (confirmed, canceled, completed)
+        for the authenticated provider, requires 'services' update permission
+      parameters:
+      - description: Appointment ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: New status (confirmed, canceled, completed)
+        in: body
+        name: status
+        required: true
+        schema:
+          properties:
+            status:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Appointment status updated
+          schema:
+            properties:
+              appointment:
+                $ref: '#/definitions/models.Appointment'
+              message:
+                type: string
+            type: object
+        "400":
+          description: Bad request - invalid ID, status, or input
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token or role
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - user does not own the appointment or lacks 'services'
+            update permission
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Appointment, provider, or customer not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Update appointment status
+      tags:
+      - provider-appointments
+  /provider/appointments/history:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a paginated list of past appointments (completed or canceled)
+        for the authenticated provider, filtered by status and date range
+      parameters:
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Number of appointments per page (default 10)
+        in: query
+        name: limit
+        type: integer
+      - description: Filter by status (completed, canceled)
+        in: query
+        name: status
+        type: string
+      - description: Date range (week, month, year, all; default month)
+        in: query
+        name: range
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Appointment history
+          schema:
+            properties:
+              appointments:
+                items:
+                  $ref: '#/definitions/models.Appointment'
+                type: array
+              limit:
+                type: integer
+              page:
+                type: integer
+              pages:
+                type: integer
+              range:
+                type: string
+              status:
+                type: string
+              total:
+                type: integer
+            type: object
+        "401":
+          description: Unauthorized - invalid or missing token or role
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - user is not a provider or admin
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get appointment history
+      tags:
+      - provider-appointments
+  /provider/appointments/upcoming:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a list of upcoming appointments (pending or confirmed)
+        for the authenticated provider, filtered by date range
+      parameters:
+      - description: Number of appointments to return (default 10)
+        in: query
+        name: limit
+        type: integer
+      - description: Date filter (today, tomorrow, week, month; default month)
+        in: query
+        name: filter
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of upcoming appointments
+          schema:
+            properties:
+              appointments:
+                items:
+                  $ref: '#/definitions/models.Appointment'
+                type: array
+              count:
+                type: integer
+              end_date:
+                type: string
+              filter:
+                type: string
+              start_date:
+                type: string
+            type: object
+        "401":
+          description: Unauthorized - invalid or missing token or role
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - user is not a provider or admin
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get upcoming appointments
+      tags:
+      - provider-appointments
+  /provider/dashboard/overview:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve overview statistics for the authenticated user's dashboard,
+        including total appointments, status counts, services, and revenue
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Dashboard overview statistics
+          schema:
+            properties:
+              canceled_count:
+                type: integer
+              completed_count:
+                type: integer
+              confirmed_count:
+                type: integer
+              last_updated:
+                type: string
+              pending_count:
+                type: integer
+              total_appointments:
+                type: integer
+              total_revenue:
+                type: number
+              total_services:
+                type: integer
+            type: object
+        "401":
+          description: Unauthorized - invalid or missing token or role
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get dashboard overview
+      tags:
+      - dashboard
+  /provider/dashboard/quick-actions:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a list of quick actions available for the authenticated
+        user's dashboard, based on their role
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Quick actions list
+          schema:
+            properties:
+              quick_actions:
+                items:
+                  properties:
+                    color:
+                      type: string
+                    description:
+                      type: string
+                    icon:
+                      type: string
+                    id:
+                      type: string
+                    title:
+                      type: string
+                    url:
+                      type: string
+                  type: object
+                type: array
+              role:
+                type: string
+              user_id:
+                type: integer
+            type: object
+        "401":
+          description: Unauthorized - invalid or missing token or role
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get quick actions
+      tags:
+      - dashboard
+  /provider/dashboard/recent-appointments:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a list of recent appointments for the authenticated user,
+        filtered by role
+      parameters:
+      - description: Number of appointments to return (default 5)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of recent appointments
+          schema:
+            items:
+              $ref: '#/definitions/models.Appointment'
+            type: array
+        "401":
+          description: Unauthorized - invalid or missing token or role
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get recent appointments
+      tags:
+      - dashboard
+  /provider/dashboard/revenue:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve revenue statistics for the authenticated user, filtered
+        by role and time range
+      parameters:
+      - description: Time range for revenue data (day, week, month, year; default
+          week)
+        in: query
+        name: range
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Revenue summary
+          schema:
+            properties:
+              data:
+                items:
+                  properties:
+                    count:
+                      type: integer
+                    date:
+                      type: string
+                    revenue:
+                      type: number
+                    services:
+                      type: integer
+                  type: object
+                type: array
+              summary:
+                properties:
+                  end_date:
+                    type: string
+                  start_date:
+                    type: string
+                  time_range:
+                    type: string
+                  total_appointments:
+                    type: integer
+                  total_revenue:
+                    type: number
+                type: object
+            type: object
+        "401":
+          description: Unauthorized - invalid or missing token or role
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get revenue summary
+      tags:
+      - dashboard
+  /provider/profile:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the authenticated provider's personal profile information,
+        including role details
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Provider profile
+          schema:
+            properties:
+              profile:
+                $ref: '#/definitions/models.User'
+            type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Provider profile not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get provider profile
+      tags:
+      - provider-profile
+    patch:
+      consumes:
+      - application/json
+      description: Update the authenticated provider's personal profile information
+        (e.g., name, email)
+      parameters:
+      - description: Updated profile information (fields like name, email; id, role,
+          password ignored)
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Profile updated successfully
+          schema:
+            properties:
+              message:
+                type: string
+              profile:
+                $ref: '#/definitions/models.User'
+            type: object
+        "400":
+          description: Bad request - invalid input
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Provider not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Update provider profile
+      tags:
+      - provider-profile
+  /provider/profile/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve provider profile and business details for a specific provider
+        by ID
+      parameters:
+      - description: Provider ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Provider and business details
+          schema:
+            properties:
+              profile:
+                properties:
+                  BusinessDetails:
+                    $ref: '#/definitions/models.BusinessDetails'
+                  Email:
+                    type: string
+                  Name:
+                    type: string
+                  ProviderID:
+                    type: integer
+                type: object
+            type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Provider or business details not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get provider details by ID
+      tags:
+      - provider-profile
+  /provider/profile/business:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the authenticated provider's business details; returns
+        default empty details if none exist
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Business details
+          schema:
+            properties:
+              business_details:
+                $ref: '#/definitions/models.BusinessDetails'
+            type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get business details
+      tags:
+      - provider-profile
+    patch:
+      consumes:
+      - application/json
+      description: Update or create the authenticated provider's business details
+      parameters:
+      - description: Updated business details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.BusinessDetails'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Business details updated
+          schema:
+            properties:
+              business_details:
+                $ref: '#/definitions/models.BusinessDetails'
+              message:
+                type: string
+            type: object
+        "400":
+          description: Bad request - invalid input
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Update business details
+      tags:
+      - provider-profile
+  /provider/profile/business/upload-media:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a profile picture (JPEG/PNG) and/or certificates (PDF) for
+        the authenticated provider's business details
+      parameters:
+      - description: Profile picture (JPEG or PNG)
+        in: formData
+        name: profile_picture
+        type: file
+      - description: Certificates (PDF)
+        in: formData
+        name: certificates
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Media uploaded successfully
+          schema:
+            properties:
+              certificate_urls:
+                items:
+                  type: string
+                type: array
+              message:
+                type: string
+              profile_picture:
+                type: string
+            type: object
+        "400":
+          description: Bad request - invalid file type or form data
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.ErrorResponse'
+            - properties:
+                Error:
+                  type: string
+                Message:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.ErrorResponse'
+            - properties:
+                Error:
+                  type: string
+                Message:
+                  type: string
+              type: object
+        "404":
+          description: Business details or provider not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.ErrorResponse'
+            - properties:
+                Error:
+                  type: string
+                Message:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/utils.ErrorResponse'
+            - properties:
+                Error:
+                  type: string
+                Message:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Upload business media
+      tags:
+      - provider-profile
+  /provider/profile/services/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a list of all services offered by a specific provider
+      parameters:
+      - description: Provider ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of services
+          schema:
+            properties:
+              services:
+                items:
+                  $ref: '#/definitions/models.Service'
+                type: array
+            type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: No services found for this provider
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get all services by provider ID
+      tags:
+      - provider-profile
+  /provider/profile/settings:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the authenticated provider's settings; returns default
+        settings if none exist
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Provider settings
+          schema:
+            properties:
+              settings:
+                $ref: '#/definitions/models.ProviderSettings'
+            type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get provider settings
+      tags:
+      - provider-profile
+    patch:
+      consumes:
+      - application/json
+      description: Update or create the authenticated provider's settings (e.g., notifications,
+        auto-confirm, advance booking days)
+      parameters:
+      - description: Updated provider settings
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.ProviderSettings'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Settings updated successfully
+          schema:
+            properties:
+              message:
+                type: string
+              settings:
+                $ref: '#/definitions/models.ProviderSettings'
+            type: object
+        "400":
+          description: Bad request - invalid input
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Update provider settings
+      tags:
+      - provider-profile
+  /provider/profile/working-hours:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve the authenticated provider's working hours
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of working hours
+          schema:
+            properties:
+              working_hours:
+                items:
+                  $ref: '#/definitions/models.WorkingHours'
+                type: array
+            type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: No working hours found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get working hours
+      tags:
+      - provider-profile
+    patch:
+      consumes:
+      - application/json
+      description: Update the authenticated provider's working hours, replacing existing
+        entries
+      parameters:
+      - description: Array of working hours entries
+        in: body
+        name: body
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/models.WorkingHours'
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Working hours updated successfully
+          schema:
+            properties:
+              message:
+                type: string
+              working_hours:
+                items:
+                  $ref: '#/definitions/models.WorkingHours'
+                type: array
+            type: object
+        "400":
+          description: Bad request - invalid input, duplicate days, or invalid times
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Update working hours
+      tags:
+      - provider-profile
+    post:
+      consumes:
+      - application/json
+      description: Create new working hours entries for the authenticated provider
+      parameters:
+      - description: Array of working hours entries
+        in: body
+        name: body
+        required: true
+        schema:
+          items:
+            $ref: '#/definitions/models.WorkingHours'
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Working hours created successfully
+          schema:
+            properties:
+              message:
+                type: string
+              working_hours:
+                items:
+                  $ref: '#/definitions/models.WorkingHours'
+                type: array
+            type: object
+        "400":
+          description: Bad request - invalid input, duplicate days, or invalid times
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Create working hours
+      tags:
+      - provider-profile
+  /provider/receptionist:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a list of receptionists associated with the authenticated
+        provider
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of receptionists
+          schema:
+            properties:
+              receptionists:
+                items:
+                  $ref: '#/definitions/models.User'
+                type: array
+            type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Provider not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get receptionist list
+      tags:
+      - provider-receptionist
+    post:
+      consumes:
+      - application/json
+      description: Create a new receptionist user and link them to the authenticated
+        provider, requires 'services' create permission
+      parameters:
+      - description: Receptionist user details (e.g., name, email, password)
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/models.User'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Created receptionist
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Bad request - invalid input
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - lacks 'services' create permission
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Provider not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Create receptionist
+      tags:
+      - provider-receptionist
+  /provider/receptionist/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a receptionist and their settings associated with the authenticated
+        provider, requires 'services' delete permission
+      parameters:
+      - description: Receptionist ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Receptionist deleted successfully
+          schema:
+            properties:
+              message:
+                type: string
+            type: object
+        "400":
+          description: Bad request - invalid receptionist ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - lacks 'services' delete permission
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Provider not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Delete receptionist
+      tags:
+      - provider-receptionist
+    get:
+      consumes:
+      - application/json
+      description: Retrieve details of a specific receptionist associated with the
+        authenticated provider
+      parameters:
+      - description: Receptionist ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Receptionist details
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Bad request - invalid receptionist ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Provider or receptionist not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get receptionist by ID
+      tags:
+      - provider-receptionist
+  /provider/services:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a list of all services with their provider details
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of services
+          schema:
+            items:
+              $ref: '#/definitions/models.Service'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      summary: Get all services
+      tags:
+      - services
+    post:
+      consumes:
+      - application/json
+      description: Create a new service for the authenticated provider, requires 'services'
+        create permission
+      parameters:
+      - description: Service details
+        in: body
+        name: service
+        required: true
+        schema:
+          $ref: '#/definitions/models.Service'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Created service
+          schema:
+            $ref: '#/definitions/models.Service'
+        "400":
+          description: Bad request - invalid input
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - user is not a provider or lacks 'services' create
+            permission
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Provider not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new service
+      tags:
+      - services
+  /provider/services/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a service by its ID, requires 'services' delete permission
+      parameters:
+      - description: Service ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No content - service successfully deleted
+        "400":
+          description: Bad request - invalid service ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - user lacks permission or does not own the service
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Service not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a service
+      tags:
+      - services
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a specific service by its ID with provider details
+      parameters:
+      - description: Service ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Service details
+          schema:
+            $ref: '#/definitions/models.Service'
+        "400":
+          description: Bad request - invalid service ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Service not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      summary: Get service by ID
+      tags:
+      - services
+    patch:
+      consumes:
+      - application/json
+      description: Update an existing service by its ID, requires 'services' update
+        permission
+      parameters:
+      - description: Service ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Service update details (partial)
+        in: body
+        name: service
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated service
+          schema:
+            $ref: '#/definitions/models.Service'
+        "400":
+          description: Bad request - invalid input or service ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - user lacks permission or does not own the service
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Service not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Update a service
+      tags:
+      - services
+  /provider/services/get-provider/service:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve all services created by the authenticated provider or
+        their receptionist
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of provider's services
+          schema:
+            items:
+              $ref: '#/definitions/models.Service'
+            type: array
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - user is not a provider or receptionist
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get provider's services
+      tags:
+      - services
+  /provider/services/names/search/names:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a list of service names that match the search query
+      parameters:
+      - description: Search query for service names
+        in: query
+        name: search
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of matching service names
+          schema:
+            items:
+              type: string
+            type: array
+        "400":
+          description: Bad request - missing search query
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      summary: Search service names
+      tags:
+      - services
+  /provider/services/search/name:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a list of services whose names match the search query
+      parameters:
+      - description: Service name to search for
+        in: query
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of matching services
+          schema:
+            items:
+              $ref: '#/definitions/models.Service'
+            type: array
+        "400":
+          description: Bad request - missing name query
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: No services found with the given name
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      summary: Search services by name
+      tags:
+      - services
+  /providers:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a paginated list of all service providers
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Number of items per page
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of providers with pagination
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                limit:
+                  type: integer
+                page:
+                  type: integer
+                pages:
+                  type: integer
+                providers:
+                  items:
+                    $ref: '#/definitions/models.User'
+                  type: array
+                total:
+                  type: integer
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get all providers
+      tags:
+      - providers
+  /providers/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve details for a specific provider including working hours
+        and business details
+      parameters:
+      - description: Provider ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Provider details
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                business_details:
+                  $ref: '#/definitions/models.BusinessDetails'
+                provider:
+                  $ref: '#/definitions/models.User'
+              type: object
+        "404":
+          description: Provider not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get provider details
+      tags:
+      - providers
+  /providers/{id}/review-stats:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves review statistics for a specific provider
+      parameters:
+      - description: Provider ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            properties:
+              AvgRating:
+                type: number
+              ProviderID:
+                type: integer
+              Rating1Count:
+                type: integer
+              Rating2Count:
+                type: integer
+              Rating3Count:
+                type: integer
+              Rating4Count:
+                type: integer
+              Rating5Count:
+                type: integer
+              TotalReviews:
+                type: integer
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+      summary: Get provider review statistics
+      tags:
+      - Reviews
+  /providers/{id}/reviews:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a paginated list of reviews for a specific provider
+      parameters:
+      - description: Provider ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Number of items per page
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            properties:
+              limit:
+                type: integer
+              page:
+                type: integer
+              pages:
+                type: integer
+              reviews:
+                items:
+                  properties:
+                    AppointmentID:
+                      type: integer
+                    Comment:
+                      type: string
+                    CreatedAt:
+                      type: string
+                    Customer:
+                      properties:
+                        CreatedAt:
+                          type: string
+                        ID:
+                          type: integer
+                        Name:
+                          type: string
+                      type: object
+                    ID:
+                      type: integer
+                    IsAnonymous:
+                      type: boolean
+                    IsVerified:
+                      type: boolean
+                    ProviderID:
+                      type: integer
+                    Rating:
+                      type: number
+                    Service:
+                      properties:
+                        ID:
+                          type: integer
+                        Name:
+                          type: string
+                      type: object
+                    UpdatedAt:
+                      type: string
+                  type: object
+                type: array
+              total:
+                type: integer
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+      summary: Get provider reviews
+      tags:
+      - Reviews
+  /providers/{id}/services:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve services offered by a specific provider
+      parameters:
+      - description: Provider ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of services
+          schema:
+            items:
+              $ref: '#/definitions/models.Service'
+            type: array
+        "404":
+          description: Provider not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get provider services
+      tags:
+      - providers
+  /providers/available-time-slots/{provider_id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve available appointment slots for a provider on a given
+        date
+      parameters:
+      - description: Provider ID
+        in: path
+        name: provider_id
+        required: true
+        type: integer
+      - description: Date in YYYY-MM-DD format
+        in: query
+        name: date
+        required: true
+        type: string
+      - description: Service ID
+        in: query
+        name: service_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Available slots
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                date:
+                  type: string
+                provider_id:
+                  type: string
+                service_id:
+                  type: string
+                slots:
+                  items:
+                    type: string
+                  type: array
+              type: object
+        "400":
+          description: Invalid date format or missing service ID
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Service not found or does not belong to provider
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get available appointment slots
+      tags:
+      - providers
+  /providers/category/{categoryId}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve providers that offer services in a specific category
+      parameters:
+      - description: Category ID
+        in: path
+        name: categoryId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of providers
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                count:
+                  type: integer
+                providers:
+                  items:
+                    $ref: '#/definitions/models.User'
+                  type: array
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get providers by category
+      tags:
+      - providers
+  /providers/featured:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a list of featured or top-rated providers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of providers
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                providers:
+                  items:
+                    $ref: '#/definitions/models.User'
+                  type: array
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get featured providers
+      tags:
+      - providers
+  /providers/nearby:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve providers near the user's location based on latitude,
+        longitude, and radius
+      parameters:
+      - description: Latitude
+        in: query
+        name: lat
+        required: true
+        type: string
+      - description: Longitude
+        in: query
+        name: lng
+        required: true
+        type: string
+      - default: "10"
+        description: Radius in kilometers
+        in: query
+        name: radius
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of nearby providers
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                lat:
+                  type: string
+                lng:
+                  type: string
+                providers:
+                  items:
+                    $ref: '#/definitions/models.User'
+                  type: array
+                radius:
+                  type: string
+              type: object
+        "400":
+          description: Location parameters (lat, lng) are required
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get nearby providers
+      tags:
+      - providers
+  /providers/search/service:
+    get:
+      consumes:
+      - application/json
+      description: Search for providers by name, business name, or service
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of providers
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                count:
+                  type: integer
+                providers:
+                  items:
+                    $ref: '#/definitions/models.User'
+                  type: array
+              type: object
+        "400":
+          description: Search query is required
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Search providers
+      tags:
+      - providers
+  /rbac/permissions:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a list of all permissions in the system, requires 'permissions'
+        read permission
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of permissions
+          schema:
+            items:
+              $ref: '#/definitions/models.Permission'
+            type: array
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - missing 'permissions' read permission
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get all permissions
+      tags:
+      - rbac
+    post:
+      consumes:
+      - application/json
+      description: Create a new permission in the system, accessible only to admin
+        users
+      parameters:
+      - description: Permission details
+        in: body
+        name: permission
+        required: true
+        schema:
+          $ref: '#/definitions/models.Permission'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created permission
+          schema:
+            $ref: '#/definitions/models.Permission'
+        "400":
+          description: Bad request - invalid input or missing name/resource/action
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - user is not an admin
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "409":
+          description: Conflict - permission with this name already exists
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new permission
+      tags:
+      - rbac
+  /rbac/roles:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a list of all roles in the system, requires 'roles' read
+        permission
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of roles
+          schema:
+            items:
+              $ref: '#/definitions/models.Role'
+            type: array
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - missing 'roles' read permission
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Get all roles
+      tags:
+      - rbac
+    post:
+      consumes:
+      - application/json
+      description: Create a new role in the system, accessible only to admin users
+      parameters:
+      - description: Role details
+        in: body
+        name: role
+        required: true
+        schema:
+          $ref: '#/definitions/models.Role'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created role
+          schema:
+            $ref: '#/definitions/models.Role'
+        "400":
+          description: Bad request - invalid input or missing role name
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - user is not an admin
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "409":
+          description: Conflict - role with this name already exists
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new role
+      tags:
+      - rbac
+  /rbac/roles/permission:
+    post:
+      consumes:
+      - application/json
+      description: Assign a permission to a role by their IDs, accessible only to
+        admin users
+      parameters:
+      - description: Permission assignment input
+        in: body
+        name: input
+        required: true
+        schema:
+          properties:
+            permission_id:
+              type: integer
+            role_id:
+              type: integer
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Permission assigned successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                message:
+                  type: string
+              type: object
+        "400":
+          description: Bad request - invalid input
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - user is not an admin
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Role or permission not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "409":
+          description: Conflict - permission already assigned to role
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Assign permission to role
+      tags:
+      - rbac
+  /rbac/users/role:
+    post:
+      consumes:
+      - application/json
+      description: Assign a role to a user by their IDs, accessible only to admin
+        users
+      parameters:
+      - description: Role assignment input
+        in: body
+        name: input
+        required: true
+        schema:
+          properties:
+            role_id:
+              type: integer
+            user_id:
+              type: integer
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Role assigned successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                message:
+                  type: string
+              type: object
+        "400":
+          description: Bad request - invalid input
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - user is not an admin
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: User or role not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Assign role to user
+      tags:
+      - rbac
+  /reviews:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new review for a provider
+      parameters:
+      - description: Review details
+        in: body
+        name: review
+        required: true
+        schema:
+          properties:
+            AppointmentID:
+              type: integer
+            Comment:
+              type: string
+            IsAnonymous:
+              type: boolean
+            ProviderID:
+              type: integer
+            Rating:
+              type: number
+            ServiceID:
+              type: integer
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            properties:
+              AppointmentID:
+                type: integer
+              Comment:
+                type: string
+              CreatedAt:
+                type: string
+              CustomerID:
+                type: integer
+              ID:
+                type: integer
+              IsAnonymous:
+                type: boolean
+              IsVerified:
+                type: boolean
+              ProviderID:
+                type: integer
+              Rating:
+                type: number
+              ServiceID:
+                type: integer
+              UpdatedAt:
+                type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a review
+      tags:
+      - Reviews
+  /reviews/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Deletes a review by its ID
+      parameters:
+      - description: Review ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a review
+      tags:
+      - Reviews
+    put:
+      consumes:
+      - application/json
+      description: Updates a review by its ID
+      parameters:
+      - description: Review ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Updated review details
+        in: body
+        name: review
+        required: true
+        schema:
+          properties:
+            Comment:
+              type: string
+            IsAnonymous:
+              type: boolean
+            Rating:
+              type: number
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            properties:
+              AppointmentID:
+                type: integer
+              Comment:
+                type: string
+              CreatedAt:
+                type: string
+              CustomerID:
+                type: integer
+              ID:
+                type: integer
+              IsAnonymous:
+                type: boolean
+              IsVerified:
+                type: boolean
+              ProviderID:
+                type: integer
+              Rating:
+                type: number
+              ServiceID:
+                type: integer
+              UpdatedAt:
+                type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            properties:
+              error:
+                type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a review
+      tags:
+      - Reviews
+  /working-hours:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a list of all working hours in the system
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of working hours
+          schema:
+            items:
+              $ref: '#/definitions/models.WorkingHours'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      summary: Get all working hours
+      tags:
+      - working-hours
+    post:
+      consumes:
+      - application/json
+      description: Create a new working hour entry, requires 'working-hours' create
+        permission
+      parameters:
+      - description: Working hour details
+        in: body
+        name: working_hour
+        required: true
+        schema:
+          $ref: '#/definitions/models.WorkingHours'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Created working hour
+          schema:
+            $ref: '#/definitions/models.WorkingHours'
+        "400":
+          description: Bad request - invalid input
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - missing 'working-hours' create permission
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Create a new working hour
+      tags:
+      - working-hours
+  /working-hours/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a working hour by its ID, requires 'working-hours' delete
+        permission
+      parameters:
+      - description: Working Hour ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No content - working hour successfully deleted
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - missing 'working-hours' delete permission
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Working hour not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a working hour
+      tags:
+      - working-hours
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a specific working hour by its ID
+      parameters:
+      - description: Working Hour ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Working hour details
+          schema:
+            $ref: '#/definitions/models.WorkingHours'
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      summary: Get working hour by ID
+      tags:
+      - working-hours
+    patch:
+      consumes:
+      - application/json
+      description: Update an existing working hour by its ID, requires 'working-hours'
+        update permission
+      parameters:
+      - description: Working Hour ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Updated working hour details
+        in: body
+        name: working_hour
+        required: true
+        schema:
+          $ref: '#/definitions/models.WorkingHours'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated working hour
+          schema:
+            $ref: '#/definitions/models.WorkingHours'
+        "400":
+          description: Bad request - invalid input
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "401":
+          description: Unauthorized - invalid or missing token
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "403":
+          description: Forbidden - missing 'working-hours' update permission
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "404":
+          description: Working hour not found
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+        "500":
+          description: Internal server error
+          schema:
+            allOf:
+            - $ref: '#/definitions/fiber.Map'
+            - properties:
+                error:
+                  type: string
+              type: object
+      security:
+      - BearerAuth: []
+      summary: Update a working hour
+      tags:
+      - working-hours
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

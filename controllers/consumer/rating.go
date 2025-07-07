@@ -9,9 +9,22 @@ import (
 	"gorm.io/gorm"
 )
 
-// CreateReview adds a new review for a provider
+// CreateReview creates a new review for a provider
+// @Summary Create a review
+// @Description Creates a new review for a provider
+// @Tags Reviews
+// @Accept json
+// @Produce json
+// @Param review body object{Rating=number,Comment=string,ProviderID=uint,ServiceID=uint,IsAnonymous=bool,AppointmentID=uint} true "Review details"
+// @Success 201 {object} object{ID=uint,Rating=number,Comment=string,ProviderID=uint,CustomerID=uint,ServiceID=uint,IsAnonymous=bool,IsVerified=bool,AppointmentID=uint,CreatedAt=string,UpdatedAt=string}
+// @Failure 400 {object} object{error=string}
+// @Failure 401 {object} object{error=string}
+// @Failure 404 {object} object{error=string}
+// @Failure 409 {object} object{error=string}
+// @Failure 500 {object} object{error=string}
+// @Security BearerAuth
+// @Router /reviews [post]
 func CreateReview(c *fiber.Ctx) error {
-	// Get the authenticated user ID
 	userIDVal := c.Locals("userID")
 	userID, ok := userIDVal.(uint)
 	if !ok {
@@ -20,7 +33,6 @@ func CreateReview(c *fiber.Ctx) error {
 		})
 	}
 
-	// Parse the review data
 	review := new(models.Review)
 	if err := c.BodyParser(review); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -28,10 +40,8 @@ func CreateReview(c *fiber.Ctx) error {
 		})
 	}
 
-	// Set the customer ID to the authenticated user
 	review.CustomerID = userID
 
-	// Check if the provider exists
 	var provider models.User
 	if err := db.DB.First(&provider, review.ProviderID).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -39,7 +49,6 @@ func CreateReview(c *fiber.Ctx) error {
 		})
 	}
 
-	// Check if the service exists and belongs to the provider
 	var service models.Service
 	if err := db.DB.Where("id = ? AND provider_id = ?", review.ServiceID, review.ProviderID).First(&service).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -47,7 +56,6 @@ func CreateReview(c *fiber.Ctx) error {
 		})
 	}
 
-	// Check if the user has already reviewed this provider/service
 	hasExisting, err := review.HasExistingReview(db.DB)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -61,7 +69,6 @@ func CreateReview(c *fiber.Ctx) error {
 		})
 	}
 
-	// If appointmentID is provided, verify it exists and belongs to the customer
 	if review.AppointmentID != nil && *review.AppointmentID > 0 {
 		var appointment models.Appointment
 		if err := db.DB.Where("id = ? AND customer_id = ? AND provider_id = ? AND service_id = ?",
@@ -72,37 +79,40 @@ func CreateReview(c *fiber.Ctx) error {
 			})
 		}
 
-		// Mark as verified since it's linked to a real appointment
 		review.IsVerified = true
 	}
 
-	// Create the review
 	if err := db.DB.Create(review).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to create review",
 		})
 	}
 
-	// Return the created review
 	return c.Status(fiber.StatusCreated).JSON(review)
 }
 
-// GetProviderReviews retrieves all reviews for a specific provider
+// GetProviderReviews retrieves reviews for a provider
+// @Summary Get provider reviews
+// @Description Retrieves a paginated list of reviews for a specific provider
+// @Tags Reviews
+// @Accept json
+// @Produce json
+// @Param id path string true "Provider ID"
+// @Param page query int false "Page number" default(1)
+// @Param limit query int false "Number of items per page" default(10)
+// @Success 200 {object} object{reviews=[]object{ID=uint,Rating=number,Comment=string,ProviderID=uint,Customer=object{ID=uint,Name=string,CreatedAt=string},Service=object{ID=uint,Name=string},IsAnonymous=bool,IsVerified=bool,AppointmentID=uint,CreatedAt=string,UpdatedAt=string},total=int,page=int,limit=int,pages=int}
+// @Failure 500 {object} object{error=string}
+// @Router /providers/{id}/reviews [get]
 func GetProviderReviews(c *fiber.Ctx) error {
-	// Get provider ID from URL parameters
 	providerID := c.Params("id")
 
-	// Get pagination parameters
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	limit, _ := strconv.Atoi(c.Query("limit", "10"))
 
-	// Calculate offset
 	offset := (page - 1) * limit
 
-	// Get reviews for the provider
 	var reviews []models.Review
 	if err := db.DB.Preload("Customer", func(db *gorm.DB) *gorm.DB {
-		// Only select non-sensitive fields
 		return db.Select("id, name, created_at")
 	}).
 		Preload("Service", "name").
@@ -116,11 +126,9 @@ func GetProviderReviews(c *fiber.Ctx) error {
 		})
 	}
 
-	// Count total reviews for pagination
 	var count int64
 	db.DB.Model(&models.Review{}).Where("provider_id = ?", providerID).Count(&count)
 
-	// Handle anonymous reviews - hide customer information
 	for i := range reviews {
 		if reviews[i].IsAnonymous {
 			reviews[i].Customer.Name = "Anonymous User"
@@ -137,8 +145,22 @@ func GetProviderReviews(c *fiber.Ctx) error {
 }
 
 // UpdateReview updates an existing review
+// @Summary Update a review
+// @Description Updates a review by its ID
+// @Tags Reviews
+// @Accept json
+// @Produce json
+// @Param id path string true "Review ID"
+// @Param review body object{Rating=number,Comment=string,IsAnonymous=bool} true "Updated review details"
+// @Success 200 {object} object{ID=uint,Rating=number,Comment=string,ProviderID=uint,CustomerID=uint,ServiceID=uint,IsAnonymous=bool,IsVerified=bool,AppointmentID=uint,CreatedAt=string,UpdatedAt=string}
+// @Failure 400 {object} object{error=string}
+// @Failure 401 {object} object{error=string}
+// @Failure 403 {object} object{error=string}
+// @Failure 404 {object} object{error=string}
+// @Failure 500 {object} object{error=string}
+// @Security BearerAuth
+// @Router /reviews/{id} [put]
 func UpdateReview(c *fiber.Ctx) error {
-	// Get the authenticated user ID
 	userIDVal := c.Locals("userID")
 	userID, ok := userIDVal.(uint)
 	if !ok {
@@ -147,10 +169,8 @@ func UpdateReview(c *fiber.Ctx) error {
 		})
 	}
 
-	// Get review ID from URL parameters
 	reviewID := c.Params("id")
 
-	// Find the existing review
 	var existingReview models.Review
 	if err := db.DB.First(&existingReview, reviewID).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -158,14 +178,12 @@ func UpdateReview(c *fiber.Ctx) error {
 		})
 	}
 
-	// Check if the authenticated user is the review owner
 	if existingReview.CustomerID != userID {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 			"error": "You don't have permission to update this review",
 		})
 	}
 
-	// Parse the updated review data
 	updateData := make(map[string]interface{})
 	if err := c.BodyParser(&updateData); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
@@ -173,22 +191,18 @@ func UpdateReview(c *fiber.Ctx) error {
 		})
 	}
 
-	// Only allow certain fields to be updated
 	allowedFields := map[string]bool{
 		"rating":       true,
 		"comment":      true,
 		"is_anonymous": true,
 	}
 
-	// Filter out fields that shouldn't be updated
 	updateMap := make(map[string]interface{})
 	for key, value := range updateData {
 		if allowedFields[key] {
-			// Ensure rating is between 1.0 and 5.0
 			if key == "rating" {
 				rating, ok := value.(float64)
 				if !ok {
-					// Try to convert from JSON number or string
 					if strRating, ok := value.(string); ok {
 						parsedRating, err := strconv.ParseFloat(strRating, 64)
 						if err == nil {
@@ -197,7 +211,6 @@ func UpdateReview(c *fiber.Ctx) error {
 					}
 				}
 
-				// Validate range
 				if rating < 1.0 {
 					rating = 1.0
 				} else if rating > 5.0 {
@@ -211,20 +224,30 @@ func UpdateReview(c *fiber.Ctx) error {
 		}
 	}
 
-	// Perform the update
 	if err := db.DB.Model(&existingReview).Updates(updateMap).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update review",
 		})
 	}
 
-	// Return the updated review
 	return c.JSON(existingReview)
 }
 
-// DeleteReview removes a review
+// DeleteReview deletes a review
+// @Summary Delete a review
+// @Description Deletes a review by its ID
+// @Tags Reviews
+// @Accept json
+// @Produce json
+// @Param id path string true "Review ID"
+// @Success 204
+// @Failure 401 {object} object{error=string}
+// @Failure 403 {object} object{error=string}
+// @Failure 404 {object} object{error=string}
+// @Failure 500 {object} object{error=string}
+// @Security BearerAuth
+// @Router /reviews/{id} [delete]
 func DeleteReview(c *fiber.Ctx) error {
-	// Get the authenticated user ID
 	userIDVal := c.Locals("userID")
 	userID, ok := userIDVal.(uint)
 	if !ok {
@@ -233,10 +256,8 @@ func DeleteReview(c *fiber.Ctx) error {
 		})
 	}
 
-	// Get review ID from URL parameters
 	reviewID := c.Params("id")
 
-	// Find the existing review
 	var existingReview models.Review
 	if err := db.DB.First(&existingReview, reviewID).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -244,7 +265,6 @@ func DeleteReview(c *fiber.Ctx) error {
 		})
 	}
 
-	// Check if the authenticated user is the review owner or an admin (check role)
 	var user models.User
 	if err := db.DB.Preload("Role").First(&user, userID).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -259,7 +279,6 @@ func DeleteReview(c *fiber.Ctx) error {
 		})
 	}
 
-	// Delete the review (soft delete since using gorm.Model)
 	if err := db.DB.Delete(&existingReview).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to delete review",
@@ -270,11 +289,18 @@ func DeleteReview(c *fiber.Ctx) error {
 }
 
 // GetProviderReviewStats retrieves review statistics for a provider
+// @Summary Get provider review statistics
+// @Description Retrieves review statistics for a specific provider
+// @Tags Reviews
+// @Accept json
+// @Produce json
+// @Param id path string true "Provider ID"
+// @Success 200 {object} object{ProviderID=uint,TotalReviews=int,AvgRating=number,Rating5Count=int,Rating4Count=int,Rating3Count=int,Rating2Count=int,Rating1Count=int}
+// @Failure 500 {object} object{error=string}
+// @Router /providers/{id}/review-stats [get]
 func GetProviderReviewStats(c *fiber.Ctx) error {
-	// Get provider ID from URL parameters
 	providerID := c.Params("id")
 
-	// Create a struct to hold stats
 	type ReviewStats struct {
 		ProviderID   uint    `json:"provider_id"`
 		TotalReviews int64   `json:"total_reviews"`
@@ -291,10 +317,8 @@ func GetProviderReviewStats(c *fiber.Ctx) error {
 		ProviderID: uint(providerIDUint),
 	}
 
-	// Count total reviews
 	db.DB.Model(&models.Review{}).Where("provider_id = ?", providerID).Count(&stats.TotalReviews)
 
-	// Get average rating
 	var avgResult struct {
 		AvgRating float64
 	}
@@ -305,7 +329,6 @@ func GetProviderReviewStats(c *fiber.Ctx) error {
 
 	stats.AvgRating = avgResult.AvgRating
 
-	// Count reviews by rating
 	db.DB.Model(&models.Review{}).Where("provider_id = ? AND rating >= 4.5 AND rating <= 5.0", providerID).Count(&stats.Rating5Count)
 	db.DB.Model(&models.Review{}).Where("provider_id = ? AND rating >= 3.5 AND rating < 4.5", providerID).Count(&stats.Rating4Count)
 	db.DB.Model(&models.Review{}).Where("provider_id = ? AND rating >= 2.5 AND rating < 3.5", providerID).Count(&stats.Rating3Count)
