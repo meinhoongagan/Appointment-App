@@ -389,7 +389,7 @@ definitions:
       message:
         type: string
     type: object
-host: localhost:8000
+host: appointment-app-a395.onrender.com
 info:
   contact: {}
   description: This is the API documentation for the Appointment App.
@@ -4574,9 +4574,17 @@ paths:
       summary: Update a working hour
       tags:
       - working-hours
+schemes:
+- http
+- https
 securityDefinitions:
   BearerAuth:
     in: header
     name: Authorization
     type: apiKey
 swagger: "2.0"
+x-servers:
+- description: Production
+  url: https://appointment-app-a395.onrender.com
+- description: Development
+  url: http://localhost:8000

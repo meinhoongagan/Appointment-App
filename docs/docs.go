@@ -7811,15 +7811,25 @@ const docTemplate = `{
             "name": "Authorization",
             "in": "header"
         }
-    }
+    },
+    "x-servers": [
+        {
+            "description": "Production",
+            "url": "https://appointment-app-a395.onrender.com"
+        },
+        {
+            "description": "Development",
+            "url": "http://localhost:8000"
+        }
+    ]
 }`
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:8000",
+	Host:             "appointment-app-a395.onrender.com",
 	BasePath:         "/",
-	Schemes:          []string{},
+	Schemes:          []string{"http", "https"},
 	Title:            "Appointment App API",
 	Description:      "This is the API documentation for the Appointment App.",
 	InfoInstanceName: "swagger",

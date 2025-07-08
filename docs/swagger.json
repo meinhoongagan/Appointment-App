@@ -1,4 +1,8 @@
 {
+    "schemes": [
+        "http",
+        "https"
+    ],
     "swagger": "2.0",
     "info": {
         "description": "This is the API documentation for the Appointment App.",
@@ -6,7 +10,7 @@
         "contact": {},
         "version": "1.0"
     },
-    "host": "https://appointment-app-a395.onrender.com/",
+    "host": "appointment-app-a395.onrender.com",
     "basePath": "/",
     "paths": {
         "/appointments": {
@@ -7805,5 +7809,15 @@
             "name": "Authorization",
             "in": "header"
         }
-    }
+    },
+    "x-servers": [
+        {
+            "description": "Production",
+            "url": "https://appointment-app-a395.onrender.com"
+        },
+        {
+            "description": "Development",
+            "url": "http://localhost:8000"
+        }
+    ]
 }
