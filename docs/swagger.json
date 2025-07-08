@@ -6,7 +6,7 @@
         "contact": {},
         "version": "1.0"
     },
-    "host": "localhost:8000",
+    "host": "https://appointment-app-a395.onrender.com/",
     "basePath": "/",
     "paths": {
         "/appointments": {
