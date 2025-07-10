@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -25,6 +26,8 @@ import (
 // @Router /provider/appointments [get]
 func GetAllAppointments(c *fiber.Ctx) error {
 	appointmentStatus := c.Query("status")
+	month := c.Query("month")
+	year := c.Query("year")
 	var appointments []models.Appointment
 	//Get appointments for service provider take provider id from c.Locals("userID")
 	userID, ok := c.Locals("userID").(uint)
@@ -40,10 +43,10 @@ func GetAllAppointments(c *fiber.Ctx) error {
 			"error": "User role not found in context",
 		})
 	}
-	// Verify that the user is a provider
-	if role != "provider" && role != "admin" {
+	// Verify that the user is a provider or receptionist
+	if role != "provider" && role != "admin" && role != "receptionist" {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "Access denied. Only providers can access this endpoint.",
+			"error": "Access denied. Only providers and receptionists can access this endpoint.",
 		})
 	}
 	query := db.DB.
@@ -54,6 +57,18 @@ func GetAllAppointments(c *fiber.Ctx) error {
 
 	if appointmentStatus != "" {
 		query = query.Where("status = ?", appointmentStatus)
+	}
+
+	// Filter by month and year if provided
+	if month != "" && year != "" {
+		// Parse month and year
+		m, errM := strconv.Atoi(month)
+		y, errY := strconv.Atoi(year)
+		if errM == nil && errY == nil {
+			start := time.Date(y, time.Month(m), 1, 0, 0, 0, 0, time.UTC)
+			end := start.AddDate(0, 1, 0)
+			query = query.Where("start_time >= ? AND start_time < ?", start, end)
+		}
 	}
 
 	if err := query.Find(&appointments).Error; err != nil {
@@ -129,10 +144,10 @@ func GetProviderUpcomingAppointments(c *fiber.Ctx) error {
 		})
 	}
 
-	// Verify that the user is a provider
-	if role != "provider" && role != "admin" {
+	// Verify that the user is a provider or receptionist
+	if role != "provider" && role != "admin" && role != "receptionist" {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "Access denied. Only providers can access this endpoint.",
+			"error": "Access denied. Only providers and receptionists can access this endpoint.",
 		})
 	}
 

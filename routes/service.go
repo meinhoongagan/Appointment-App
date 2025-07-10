@@ -38,14 +38,14 @@ func SetupServiceRoutes(app *fiber.App) {
 	// All appointments
 	providerAppointments.Get("/", services.GetAllAppointments)
 
-	// Appointment details
-	providerAppointments.Get("/:id", services.GetAppointmentDetails)
-
 	// Upcoming appointments
 	providerAppointments.Get("/upcoming", services.GetProviderUpcomingAppointments)
 
 	// Appointment history
 	providerAppointments.Get("/history", services.GetProviderAppointmentHistory)
+
+	// Appointment details
+	providerAppointments.Get("/:id", services.GetAppointmentDetails)
 
 	// Appointment management
 	providerAppointments.Patch("/:id/status", middleware.RequirePermission("services", "update"), services.UpdateAppointmentStatus)

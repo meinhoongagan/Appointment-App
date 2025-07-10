@@ -36,64 +36,94 @@ func GetDashboardOverview(c *fiber.Ctx) error {
 		})
 	}
 
-	var statistics struct {
-		TotalAppointments int64     `json:"total_appointments"`
-		PendingCount      int64     `json:"pending_count"`
-		ConfirmedCount    int64     `json:"confirmed_count"`
-		CompletedCount    int64     `json:"completed_count"`
-		CanceledCount     int64     `json:"canceled_count"`
-		TotalServices     int64     `json:"total_services"`
-		TotalRevenue      float64   `json:"total_revenue"`
-		LastUpdated       time.Time `json:"last_updated"`
+	type Stats struct {
+		TotalAppointments         int64     `json:"total_appointments"`
+		TotalAppointmentsPrevious int64     `json:"total_appointments_previous"`
+		PendingCount              int64     `json:"pending_count"`
+		PendingCountPrevious      int64     `json:"pending_count_previous"`
+		ConfirmedCount            int64     `json:"confirmed_count"`
+		ConfirmedCountPrevious    int64     `json:"confirmed_count_previous"`
+		CompletedCount            int64     `json:"completed_count"`
+		CompletedCountPrevious    int64     `json:"completed_count_previous"`
+		CanceledCount             int64     `json:"canceled_count"`
+		CanceledCountPrevious     int64     `json:"canceled_count_previous"`
+		TotalServices             int64     `json:"total_services"`
+		TotalServicesPrevious     int64     `json:"total_services_previous"`
+		TotalRevenue              float64   `json:"total_revenue"`
+		TotalRevenuePrevious      float64   `json:"total_revenue_previous"`
+		LastUpdated               time.Time `json:"last_updated"`
 	}
+	var statistics Stats
 
-	// Base query - will be modified based on role
+	// Date ranges
+	now := time.Now()
+	startCurrent := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	startPrevious := startCurrent.AddDate(0, -1, 0)
+	endPrevious := startCurrent.Add(-time.Nanosecond)
+
+	// Base queries
 	appointmentQuery := db.DB.Model(&models.Appointment{})
-	serviceQuery := db.DB.Model(&models.Service{})
+	serviceQuery := db.DB.Model(&models.Service{}).Where("provider_id = ?", userID)
 
-	// Filter queries based on user role
 	if role == "provider" {
-		// If provider, only show their appointments and services
 		appointmentQuery = appointmentQuery.Where("provider_id = ?", userID)
 		serviceQuery = serviceQuery.Where("provider_id = ?", userID)
 	} else if role != "admin" {
-		// If client, only show their appointments
 		appointmentQuery = appointmentQuery.Where("customer_id = ?", userID)
 	}
-	// Admin sees all data, so no additional filtering needed
 
-	// Get total appointments
-	appointmentQuery.Count(&statistics.TotalAppointments)
+	// --- Current period ---
+	appointmentQuery.Where("created_at >= ?", startCurrent).Count(&statistics.TotalAppointments)
+	appointmentQuery.Where("status = ? AND created_at >= ?", models.StatusPending, startCurrent).Count(&statistics.PendingCount)
+	appointmentQuery.Where("status = ? AND created_at >= ?", models.StatusConfirmed, startCurrent).Count(&statistics.ConfirmedCount)
+	appointmentQuery.Where("status = ? AND created_at >= ?", models.StatusCompleted, startCurrent).Count(&statistics.CompletedCount)
+	appointmentQuery.Where("status = ? AND created_at >= ?", models.StatusCanceled, startCurrent).Count(&statistics.CanceledCount)
+	serviceQuery.Where("created_at >= ?", startCurrent).Count(&statistics.TotalServices)
 
-	// Get appointments by status
-	appointmentQuery.Where("status = ?", models.StatusPending).Count(&statistics.PendingCount)
-	appointmentQuery.Where("status = ?", models.StatusConfirmed).Count(&statistics.ConfirmedCount)
-	appointmentQuery.Where("status = ?", models.StatusCompleted).Count(&statistics.CompletedCount)
-	appointmentQuery.Where("status = ?", models.StatusCanceled).Count(&statistics.CanceledCount)
-
-	// Get total services
-	serviceQuery.Count(&statistics.TotalServices)
-
-	// Calculate total revenue (from completed appointments)
-	type RevenueResult struct {
-		TotalRevenue float64
-	}
+	// Revenue (current)
+	type RevenueResult struct{ TotalRevenue float64 }
 	var revenueResult RevenueResult
-
-	// Revenue query
 	revenueQuery := db.DB.Table("appointments").
 		Joins("JOIN services ON appointments.service_id = services.id").
-		Where("appointments.status = ?", models.StatusCompleted)
-
-	// Filter by provider if needed
+		Where("appointments.status = ?", models.StatusCompleted).
+		Where("appointments.created_at >= ?", startCurrent)
 	if role == "provider" {
 		revenueQuery = revenueQuery.Where("appointments.provider_id = ?", userID)
 	} else if role != "admin" {
 		revenueQuery = revenueQuery.Where("appointments.customer_id = ?", userID)
 	}
-
 	revenueQuery.Select("SUM(services.cost) as total_revenue").Scan(&revenueResult)
 	statistics.TotalRevenue = revenueResult.TotalRevenue
+
+	// --- Previous period ---
+	appointmentQueryPrev := db.DB.Model(&models.Appointment{})
+	serviceQueryPrev := db.DB.Model(&models.Service{}).Where("provider_id = ?", userID)
+	if role == "provider" {
+		appointmentQueryPrev = appointmentQueryPrev.Where("provider_id = ?", userID)
+		serviceQueryPrev = serviceQueryPrev.Where("provider_id = ?", userID)
+	} else if role != "admin" {
+		appointmentQueryPrev = appointmentQueryPrev.Where("customer_id = ?", userID)
+	}
+	appointmentQueryPrev.Where("created_at >= ? AND created_at <= ?", startPrevious, endPrevious).Count(&statistics.TotalAppointmentsPrevious)
+	appointmentQueryPrev.Where("status = ? AND created_at >= ? AND created_at <= ?", models.StatusPending, startPrevious, endPrevious).Count(&statistics.PendingCountPrevious)
+	appointmentQueryPrev.Where("status = ? AND created_at >= ? AND created_at <= ?", models.StatusConfirmed, startPrevious, endPrevious).Count(&statistics.ConfirmedCountPrevious)
+	appointmentQueryPrev.Where("status = ? AND created_at >= ? AND created_at <= ?", models.StatusCompleted, startPrevious, endPrevious).Count(&statistics.CompletedCountPrevious)
+	appointmentQueryPrev.Where("status = ? AND created_at >= ? AND created_at <= ?", models.StatusCanceled, startPrevious, endPrevious).Count(&statistics.CanceledCountPrevious)
+	serviceQueryPrev.Where("created_at >= ? AND created_at <= ?", startPrevious, endPrevious).Count(&statistics.TotalServicesPrevious)
+
+	// Revenue (previous)
+	var revenueResultPrev RevenueResult
+	revenueQueryPrev := db.DB.Table("appointments").
+		Joins("JOIN services ON appointments.service_id = services.id").
+		Where("appointments.status = ?", models.StatusCompleted).
+		Where("appointments.created_at >= ? AND appointments.created_at <= ?", startPrevious, endPrevious)
+	if role == "provider" {
+		revenueQueryPrev = revenueQueryPrev.Where("appointments.provider_id = ?", userID)
+	} else if role != "admin" {
+		revenueQueryPrev = revenueQueryPrev.Where("appointments.customer_id = ?", userID)
+	}
+	revenueQueryPrev.Select("SUM(services.cost) as total_revenue").Scan(&revenueResultPrev)
+	statistics.TotalRevenuePrevious = revenueResultPrev.TotalRevenue
 
 	// Set last updated time
 	statistics.LastUpdated = time.Now()
@@ -383,19 +413,11 @@ func GetQuickActions(c *fiber.Ctx) error {
 	case "admin":
 		quickActions = append(quickActions,
 			map[string]interface{}{
-				"id":          "create_service",
-				"title":       "Add New Service",
-				"description": "Create a new service offering",
-				"icon":        "add",
-				"url":         "/services/new",
-				"color":       "green",
-			},
-			map[string]interface{}{
-				"id":          "manage_users",
-				"title":       "Manage Users",
-				"description": "View and edit user accounts",
+				"id":          "receptionists",
+				"title":       "Manage receptionists",
+				"description": "View and edit receptionists accounts",
 				"icon":        "users",
-				"url":         "/users",
+				"url":         "/service-dashboard/receptionists",
 				"color":       "purple",
 			},
 			map[string]interface{}{
@@ -424,6 +446,14 @@ func GetQuickActions(c *fiber.Ctx) error {
 				"icon":        "list",
 				"url":         "/appointments/today",
 				"color":       "teal",
+			},
+			map[string]interface{}{
+				"id":          "manage_receptionist",
+				"title":       "Manage Receptionist",
+				"description": "Add or manage your receptionists",
+				"icon":        "users",
+				"url":         "/service-dashboard/receptionists",
+				"color":       "purple",
 			},
 		)
 	default: // client or other roles

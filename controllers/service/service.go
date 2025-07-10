@@ -213,7 +213,7 @@ func CreateService(c *fiber.Ctx) error {
 
 	// Verify role
 	role, ok := c.Locals("role").(string)
-	if !ok || role != "provider" {
+	if !ok || role != "provider" && role != "receptionist" && role != "admin" {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 			"error": "Only providers can create services",
 		})
