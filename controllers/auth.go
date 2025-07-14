@@ -107,6 +107,21 @@ func Register(c *fiber.Ctx) error {
 		})
 	}
 
+	// Generate OTP and send email (same as SendOTP)
+	otp := utils.GenerateOTP()
+	user.OTP = otp
+	user.OTPExpiresAt = time.Now().Add(10 * time.Minute)
+	if err := db.DB.Save(&user).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to save OTP",
+		})
+	}
+	if err := utils.SendEmail(user.Email, "Your OTP Code", fmt.Sprintf("Your OTP code is: %s ,Valid for 10 minutes", otp)); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to send OTP email",
+		})
+	}
+
 	// Remove password from response
 	user.Password = ""
 
