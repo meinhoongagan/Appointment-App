@@ -25,64 +25,69 @@ import (
 // @Security BearerAuth
 // @Router /reviews [post]
 func CreateReview(c *fiber.Ctx) error {
-	userIDVal := c.Locals("userID")
-	userID, ok := userIDVal.(uint)
-	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Invalid user ID",
-		})
-	}
+	reviewChan := make(chan *models.Review)
 
-	review := new(models.Review)
-	if err := c.BodyParser(review); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid review data",
-		})
-	}
-
-	review.CustomerID = userID
-
-	var provider models.User
-	if err := db.DB.First(&provider, review.ProviderID).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Provider not found",
-		})
-	}
-
-	var service models.Service
-	if err := db.DB.Where("id = ? AND provider_id = ?", review.ServiceID, review.ProviderID).First(&service).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Service not found or does not belong to this provider",
-		})
-	}
-
-	hasExisting, err := review.HasExistingReview(db.DB)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to check existing reviews",
-		})
-	}
-
-	if hasExisting {
-		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-			"error": "You have already reviewed this service. Please update your existing review.",
-		})
-	}
-
-	if review.AppointmentID != nil && *review.AppointmentID > 0 {
-		var appointment models.Appointment
-		if err := db.DB.Where("id = ? AND customer_id = ? AND provider_id = ? AND service_id = ?",
-			*review.AppointmentID, userID, review.ProviderID, review.ServiceID).
-			First(&appointment).Error; err != nil {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"error": "Appointment not found or does not match the review details",
-			})
+	go func() {
+		userIDVal := c.Locals("userID")
+		userID, ok := userIDVal.(uint)
+		if !ok {
+			reviewChan <- nil
+			return
 		}
 
-		review.IsVerified = true
-	}
+		review := new(models.Review)
+		if err := c.BodyParser(review); err != nil {
+			reviewChan <- nil
+			return
+		}
 
-	if err := db.DB.Create(review).Error; err != nil {
+		review.CustomerID = userID
+
+		var provider models.User
+		if err := db.DB.First(&provider, review.ProviderID).Error; err != nil {
+			reviewChan <- nil
+			return
+		}
+
+		var service models.Service
+		if err := db.DB.Where("id = ? AND provider_id = ?", review.ServiceID, review.ProviderID).First(&service).Error; err != nil {
+			reviewChan <- nil
+			return
+		}
+
+		hasExisting, err := review.HasExistingReview(db.DB)
+		if err != nil {
+			reviewChan <- nil
+			return
+		}
+
+		if hasExisting {
+			reviewChan <- nil
+			return
+		}
+
+		if review.AppointmentID != nil && *review.AppointmentID > 0 {
+			var appointment models.Appointment
+			if err := db.DB.Where("id = ? AND customer_id = ? AND provider_id = ? AND service_id = ?",
+				*review.AppointmentID, userID, review.ProviderID, review.ServiceID).
+				First(&appointment).Error; err != nil {
+				reviewChan <- nil
+				return
+			}
+
+			review.IsVerified = true
+		}
+
+		if err := db.DB.Create(review).Error; err != nil {
+			reviewChan <- nil
+			return
+		}
+
+		reviewChan <- review
+	}()
+
+	review := <-reviewChan
+	if review == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to create review",
 		})
@@ -112,22 +117,36 @@ func GetProviderReviews(c *fiber.Ctx) error {
 	offset := (page - 1) * limit
 
 	var reviews []models.Review
-	if err := db.DB.Preload("Customer", func(db *gorm.DB) *gorm.DB {
-		return db.Select("id, name, created_at")
-	}).
-		Preload("Service", "name").
-		Where("provider_id = ?", providerID).
-		Order("created_at DESC").
-		Limit(limit).
-		Offset(offset).
-		Find(&reviews).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to fetch reviews",
-		})
-	}
-
 	var count int64
-	db.DB.Model(&models.Review{}).Where("provider_id = ?", providerID).Count(&count)
+
+	// Create two goroutines to fetch reviews and count concurrently
+	reviewsChan := make(chan []models.Review)
+	countChan := make(chan int64)
+
+	go func() {
+		if err := db.DB.Preload("Customer", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id, name, created_at")
+		}).
+			Preload("Service", "name").
+			Where("provider_id = ?", providerID).
+			Order("created_at DESC").
+			Limit(limit).
+			Offset(offset).
+			Find(&reviews).Error; err != nil {
+			reviewsChan <- []models.Review{}
+			return
+		}
+		reviewsChan <- reviews
+	}()
+
+	go func() {
+		db.DB.Model(&models.Review{}).Where("provider_id = ?", providerID).Count(&count)
+		countChan <- count
+	}()
+
+	// Wait for both goroutines to finish
+	reviews = <-reviewsChan
+	count = <-countChan
 
 	for i := range reviews {
 		if reviews[i].IsAnonymous {
@@ -172,7 +191,68 @@ func UpdateReview(c *fiber.Ctx) error {
 	reviewID := c.Params("id")
 
 	var existingReview models.Review
-	if err := db.DB.First(&existingReview, reviewID).Error; err != nil {
+	var updateMap map[string]interface{}
+
+	// Create two goroutines to fetch review and parse update data concurrently
+	reviewChan := make(chan models.Review)
+	updateDataChan := make(chan map[string]interface{})
+
+	go func() {
+		if err := db.DB.First(&existingReview, reviewID).Error; err != nil {
+			reviewChan <- models.Review{}
+			return
+		}
+		reviewChan <- existingReview
+	}()
+
+	go func() {
+		updateData := make(map[string]interface{})
+		if err := c.BodyParser(&updateData); err != nil {
+			updateDataChan <- map[string]interface{}{}
+			return
+		}
+
+		allowedFields := map[string]bool{
+			"rating":       true,
+			"comment":      true,
+			"is_anonymous": true,
+		}
+
+		updateMap = make(map[string]interface{})
+		for key, value := range updateData {
+			if allowedFields[key] {
+				if key == "rating" {
+					rating, ok := value.(float64)
+					if !ok {
+						if strRating, ok := value.(string); ok {
+							parsedRating, err := strconv.ParseFloat(strRating, 64)
+							if err == nil {
+								rating = parsedRating
+							}
+						}
+					}
+
+					if rating < 1.0 {
+						rating = 1.0
+					} else if rating > 5.0 {
+						rating = 5.0
+					}
+
+					updateMap[key] = rating
+				} else {
+					updateMap[key] = value
+				}
+			}
+		}
+
+		updateDataChan <- updateMap
+	}()
+
+	// Wait for both goroutines to finish
+	existingReview = <-reviewChan
+	updateMap = <-updateDataChan
+
+	if existingReview.ID == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Review not found",
 		})
@@ -182,46 +262,6 @@ func UpdateReview(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 			"error": "You don't have permission to update this review",
 		})
-	}
-
-	updateData := make(map[string]interface{})
-	if err := c.BodyParser(&updateData); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid review data",
-		})
-	}
-
-	allowedFields := map[string]bool{
-		"rating":       true,
-		"comment":      true,
-		"is_anonymous": true,
-	}
-
-	updateMap := make(map[string]interface{})
-	for key, value := range updateData {
-		if allowedFields[key] {
-			if key == "rating" {
-				rating, ok := value.(float64)
-				if !ok {
-					if strRating, ok := value.(string); ok {
-						parsedRating, err := strconv.ParseFloat(strRating, 64)
-						if err == nil {
-							rating = parsedRating
-						}
-					}
-				}
-
-				if rating < 1.0 {
-					rating = 1.0
-				} else if rating > 5.0 {
-					rating = 5.0
-				}
-
-				updateMap[key] = rating
-			} else {
-				updateMap[key] = value
-			}
-		}
 	}
 
 	if err := db.DB.Model(&existingReview).Updates(updateMap).Error; err != nil {
@@ -317,23 +357,64 @@ func GetProviderReviewStats(c *fiber.Ctx) error {
 		ProviderID: uint(providerIDUint),
 	}
 
-	db.DB.Model(&models.Review{}).Where("provider_id = ?", providerID).Count(&stats.TotalReviews)
+	// Create 6 goroutines to fetch different stats concurrently
+	totalReviewsChan := make(chan int64)
+	avgRatingChan := make(chan float64)
+	rating5CountChan := make(chan int64)
+	rating4CountChan := make(chan int64)
+	rating3CountChan := make(chan int64)
+	rating2CountChan := make(chan int64)
+	rating1CountChan := make(chan int64)
 
-	var avgResult struct {
-		AvgRating float64
-	}
-	db.DB.Model(&models.Review{}).
-		Select("COALESCE(AVG(rating), 0) as avg_rating").
-		Where("provider_id = ?", providerID).
-		Scan(&avgResult)
+	go func() {
+		db.DB.Model(&models.Review{}).Where("provider_id = ?", providerID).Count(&stats.TotalReviews)
+		totalReviewsChan <- stats.TotalReviews
+	}()
 
-	stats.AvgRating = avgResult.AvgRating
+	go func() {
+		var avgResult struct {
+			AvgRating float64
+		}
+		db.DB.Model(&models.Review{}).
+			Select("COALESCE(AVG(rating), 0) as avg_rating").
+			Where("provider_id = ?", providerID).
+			Scan(&avgResult)
+		avgRatingChan <- avgResult.AvgRating
+	}()
 
-	db.DB.Model(&models.Review{}).Where("provider_id = ? AND rating >= 4.5 AND rating <= 5.0", providerID).Count(&stats.Rating5Count)
-	db.DB.Model(&models.Review{}).Where("provider_id = ? AND rating >= 3.5 AND rating < 4.5", providerID).Count(&stats.Rating4Count)
-	db.DB.Model(&models.Review{}).Where("provider_id = ? AND rating >= 2.5 AND rating < 3.5", providerID).Count(&stats.Rating3Count)
-	db.DB.Model(&models.Review{}).Where("provider_id = ? AND rating >= 1.5 AND rating < 2.5", providerID).Count(&stats.Rating2Count)
-	db.DB.Model(&models.Review{}).Where("provider_id = ? AND rating >= 1.0 AND rating < 1.5", providerID).Count(&stats.Rating1Count)
+	go func() {
+		db.DB.Model(&models.Review{}).Where("provider_id = ? AND rating >= 4.5 AND rating <= 5.0", providerID).Count(&stats.Rating5Count)
+		rating5CountChan <- stats.Rating5Count
+	}()
+
+	go func() {
+		db.DB.Model(&models.Review{}).Where("provider_id = ? AND rating >= 3.5 AND rating < 4.5", providerID).Count(&stats.Rating4Count)
+		rating4CountChan <- stats.Rating4Count
+	}()
+
+	go func() {
+		db.DB.Model(&models.Review{}).Where("provider_id = ? AND rating >= 2.5 AND rating < 3.5", providerID).Count(&stats.Rating3Count)
+		rating3CountChan <- stats.Rating3Count
+	}()
+
+	go func() {
+		db.DB.Model(&models.Review{}).Where("provider_id = ? AND rating >= 1.5 AND rating < 2.5", providerID).Count(&stats.Rating2Count)
+		rating2CountChan <- stats.Rating2Count
+	}()
+
+	go func() {
+		db.DB.Model(&models.Review{}).Where("provider_id = ? AND rating >= 1.0 AND rating < 1.5", providerID).Count(&stats.Rating1Count)
+		rating1CountChan <- stats.Rating1Count
+	}()
+
+	// Wait for all goroutines to finish
+	stats.TotalReviews = <-totalReviewsChan
+	stats.AvgRating = <-avgRatingChan
+	stats.Rating5Count = <-rating5CountChan
+	stats.Rating4Count = <-rating4CountChan
+	stats.Rating3Count = <-rating3CountChan
+	stats.Rating2Count = <-rating2CountChan
+	stats.Rating1Count = <-rating1CountChan
 
 	return c.JSON(stats)
 }

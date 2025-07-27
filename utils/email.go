@@ -10,24 +10,38 @@ import (
 )
 
 func SendEmail(to, subject, body string) error {
-	err := godotenv.Load()
-	if err != nil {
-		log.Println("Warning: Error loading .env file. Using environment variables directly.")
+	type emailResult struct {
+		Err error
 	}
-	port, _ := strconv.Atoi(os.Getenv("SMTP_PORT"))
 
-	m := gomail.NewMessage()
-	m.SetHeader("From", os.Getenv("EMAIL_USER"))
-	m.SetHeader("To", to)
-	m.SetHeader("Subject", subject)
-	m.SetBody("text/html", body)
+	resultChan := make(chan emailResult)
 
-	d := gomail.NewDialer(
-		os.Getenv("SMTP_HOST"),
-		port,
-		os.Getenv("EMAIL_USER"),
-		os.Getenv("EMAIL_PASS"),
-	)
+	go func() {
+		var result emailResult
 
-	return d.DialAndSend(m)
+		err := godotenv.Load()
+		if err != nil {
+			log.Println("Warning: Error loading .env file. Using environment variables directly.")
+		}
+		port, _ := strconv.Atoi(os.Getenv("SMTP_PORT"))
+
+		m := gomail.NewMessage()
+		m.SetHeader("From", os.Getenv("EMAIL_USER"))
+		m.SetHeader("To", to)
+		m.SetHeader("Subject", subject)
+		m.SetBody("text/html", body)
+
+		d := gomail.NewDialer(
+			os.Getenv("SMTP_HOST"),
+			port,
+			os.Getenv("EMAIL_USER"),
+			os.Getenv("EMAIL_PASS"),
+		)
+
+		result.Err = d.DialAndSend(m)
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	return result.Err
 }

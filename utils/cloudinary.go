@@ -39,31 +39,54 @@ func InitCloudinary() (*cloudinary.Cloudinary, error) {
 
 // UploadToCloudinary uploads a file to Cloudinary and returns the secure URL
 func UploadToCloudinary(file interface{}, publicID string, folder string) (string, error) {
-	cld, err := InitCloudinary()
-	if err != nil {
-		return "", err
+	type uploadResult struct {
+		URL string
+		Err error
 	}
 
-	ctx := context.Background()
-	uploadParams := uploader.UploadParams{
-		PublicID:     publicID,
-		Folder:       folder,
-		UploadPreset: os.Getenv("CLOUDINARY_UPLOAD_PRESET"),
-	}
+	resultChan := make(chan uploadResult)
 
-	// Apply transformation only for images (not for PDFs)
-	fileStr, ok := file.(string)
-	if ok {
-		ext := filepath.Ext(fileStr)
-		if ext != ".pdf" && ext != ".PDF" {
-			// Add transformation only for images
-			uploadParams.Transformation = "c_thumb,w_200,h_200" // Resize profile pictures
+	go func() {
+		var result uploadResult
+
+		cld, err := InitCloudinary()
+		if err != nil {
+			result.Err = err
+			resultChan <- result
+			return
 		}
-	}
 
-	resp, err := cld.Upload.Upload(ctx, file, uploadParams)
-	if err != nil {
-		return "", err
+		ctx := context.Background()
+		uploadParams := uploader.UploadParams{
+			PublicID:     publicID,
+			Folder:       folder,
+			UploadPreset: os.Getenv("CLOUDINARY_UPLOAD_PRESET"),
+		}
+
+		// Apply transformation only for images (not for PDFs)
+		fileStr, ok := file.(string)
+		if ok {
+			ext := filepath.Ext(fileStr)
+			if ext != ".pdf" && ext != ".PDF" {
+				// Add transformation only for images
+				uploadParams.Transformation = "c_thumb,w_200,h_200" // Resize profile pictures
+			}
+		}
+
+		resp, err := cld.Upload.Upload(ctx, file, uploadParams)
+		if err != nil {
+			result.Err = err
+			resultChan <- result
+			return
+		}
+		
+		result.URL = resp.SecureURL
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		return "", result.Err
 	}
-	return resp.SecureURL, nil
+	return result.URL, nil
 }

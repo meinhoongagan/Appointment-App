@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"mime/multipart"
 	"os"
 	"path/filepath"
 	"time"
@@ -30,15 +31,34 @@ import (
 func GetProviderProfile(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
-	var provider models.User
-	if err := db.DB.Preload("Role").First(&provider, userID).Error; err != nil {
+	type profileResult struct {
+		Provider models.User
+		Err      error
+	}
+
+	resultChan := make(chan profileResult)
+
+	go func() {
+		var result profileResult
+
+		if err := db.DB.Preload("Role").First(&result.Provider, userID).Error; err != nil {
+			result.Err = err
+			resultChan <- result
+			return
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Provider profile not found",
 		})
 	}
 
 	return c.JSON(fiber.Map{
-		"profile": provider,
+		"profile": result.Provider,
 	})
 }
 
@@ -66,27 +86,59 @@ func GetProviderDetailsByID(c *fiber.Ctx) error {
 	}
 
 	id := c.Params("id")
-	//search profile by id and get business details
-	var provider models.User
-	if err := db.DB.Preload("Role").First(&provider, id).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Provider not found",
-		})
+
+	type detailsResult struct {
+		Provider        models.User
+		BusinessDetails models.BusinessDetails
+		Err             error
+		ErrType         string
 	}
+
+	resultChan := make(chan detailsResult)
+
+	go func() {
+		var result detailsResult
+
+		// Get provider details
+		if err := db.DB.Preload("Role").First(&result.Provider, id).Error; err != nil {
+			result.Err = err
+			result.ErrType = "provider"
+			resultChan <- result
+			return
+		}
+
+		// Get business details
+		if err := db.DB.Where("provider_id = ?", id).First(&result.BusinessDetails).Error; err != nil {
+			result.Err = err
+			result.ErrType = "business"
+			resultChan <- result
+			return
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		if result.ErrType == "provider" {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "Provider not found",
+			})
+		} else {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "Business details not found",
+			})
+		}
+	}
+
 	var profile Profile
-	profile.ProviderID = provider.ID
-	profile.Name = provider.Name
-	profile.Email = provider.Email
-	var businessDetails models.BusinessDetails
-	if err := db.DB.Where("provider_id = ?", id).First(&businessDetails).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Business details not found",
-		})
-	}
+	profile.ProviderID = result.Provider.ID
+	profile.Name = result.Provider.Name
+	profile.Email = result.Provider.Email
 
 	return c.JSON(fiber.Map{
 		"profile": details{
-			BusinessDetails: businessDetails,
+			BusinessDetails: result.BusinessDetails,
 			Provider:        profile,
 		},
 	})
@@ -106,14 +158,35 @@ func GetProviderDetailsByID(c *fiber.Ctx) error {
 // @Router /provider/profile/services/{id} [get]
 func GetAllServicesByProviderID(c *fiber.Ctx) error {
 	providerID := c.Params("id")
-	var services []models.Service
-	if err := db.DB.Where("provider_id = ?", providerID).Find(&services).Error; err != nil {
+
+	type servicesResult struct {
+		Services []models.Service
+		Err      error
+	}
+
+	resultChan := make(chan servicesResult)
+
+	go func() {
+		var result servicesResult
+
+		if err := db.DB.Where("provider_id = ?", providerID).Find(&result.Services).Error; err != nil {
+			result.Err = err
+			resultChan <- result
+			return
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "No services found for this provider",
 		})
 	}
+
 	return c.JSON(fiber.Map{
-		"services": services,
+		"services": result.Services,
 	})
 }
 
@@ -134,14 +207,6 @@ func GetAllServicesByProviderID(c *fiber.Ctx) error {
 func UpdateProviderProfile(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
-	// Find existing provider
-	var provider models.User
-	if err := db.DB.First(&provider, userID).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Provider not found",
-		})
-	}
-
 	// Parse update data
 	updateData := make(map[string]interface{})
 	if err := c.BodyParser(&updateData); err != nil {
@@ -156,23 +221,70 @@ func UpdateProviderProfile(c *fiber.Ctx) error {
 		delete(updateData, field)
 	}
 
-	// Update provider profile
-	if err := db.DB.Model(&provider).Updates(updateData).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to update profile",
-		})
+	type updateResult struct {
+		Provider models.User
+		Err      error
+		ErrType  string
 	}
 
-	// Refresh provider data
-	if err := db.DB.Preload("Role").First(&provider, userID).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to retrieve updated profile",
-		})
+	resultChan := make(chan updateResult)
+
+	go func() {
+		var result updateResult
+
+		// Find existing provider
+		var provider models.User
+		if err := db.DB.First(&provider, userID).Error; err != nil {
+			result.Err = err
+			result.ErrType = "not_found"
+			resultChan <- result
+			return
+		}
+
+		// Update provider profile
+		if err := db.DB.Model(&provider).Updates(updateData).Error; err != nil {
+			result.Err = err
+			result.ErrType = "update_failed"
+			resultChan <- result
+			return
+		}
+
+		// Refresh provider data
+		if err := db.DB.Preload("Role").First(&result.Provider, userID).Error; err != nil {
+			result.Err = err
+			result.ErrType = "refresh_failed"
+			resultChan <- result
+			return
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		switch result.ErrType {
+		case "not_found":
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "Provider not found",
+			})
+		case "update_failed":
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to update profile",
+			})
+		case "refresh_failed":
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to retrieve updated profile",
+			})
+		default:
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": result.Err.Error(),
+			})
+		}
 	}
 
 	return c.JSON(fiber.Map{
 		"message": "Profile updated successfully",
-		"profile": provider,
+		"profile": result.Provider,
 	})
 }
 
@@ -189,19 +301,42 @@ func UpdateProviderProfile(c *fiber.Ctx) error {
 func GetBusinessDetails(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
-	// Assuming there's a BusinessDetails model linked to the provider
-	var businessDetails models.BusinessDetails
-	if err := db.DB.Where("provider_id = ?", userID).First(&businessDetails).Error; err != nil {
-		// If not found, return empty details rather than error
-		return c.JSON(fiber.Map{
-			"business_details": models.BusinessDetails{
+	type businessResult struct {
+		Details models.BusinessDetails
+		Found   bool
+		Err     error
+	}
+
+	resultChan := make(chan businessResult)
+
+	go func() {
+		var result businessResult
+
+		// Assuming there's a BusinessDetails model linked to the provider
+		var businessDetails models.BusinessDetails
+		if err := db.DB.Where("provider_id = ?", userID).First(&businessDetails).Error; err != nil {
+			// Not found is not considered an error in this case
+			result.Details = models.BusinessDetails{
 				ProviderID: userID,
-			},
+			}
+			result.Found = false
+		} else {
+			result.Details = businessDetails
+			result.Found = true
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to retrieve business details",
 		})
 	}
 
 	return c.JSON(fiber.Map{
-		"business_details": businessDetails,
+		"business_details": result.Details,
 	})
 }
 
@@ -221,10 +356,6 @@ func GetBusinessDetails(c *fiber.Ctx) error {
 func UpdateBusinessDetails(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
-	var businessDetails models.BusinessDetails
-	// Try to find existing business details
-	result := db.DB.Where("provider_id = ?", userID).First(&businessDetails)
-
 	// Parse update data
 	updatedDetails := new(models.BusinessDetails)
 	if err := c.BodyParser(updatedDetails); err != nil {
@@ -236,28 +367,75 @@ func UpdateBusinessDetails(c *fiber.Ctx) error {
 	// Ensure provider ID is set correctly
 	updatedDetails.ProviderID = userID
 
-	// If business details exist, update them
-	if result.RowsAffected > 0 {
-		if err := db.DB.Model(&businessDetails).Updates(updatedDetails).Error; err != nil {
+	type updateBusinessResult struct {
+		Details models.BusinessDetails
+		Err     error
+		ErrType string
+	}
+
+	resultChan := make(chan updateBusinessResult)
+
+	go func() {
+		var result updateBusinessResult
+
+		var businessDetails models.BusinessDetails
+		// Try to find existing business details
+		dbResult := db.DB.Where("provider_id = ?", userID).First(&businessDetails)
+
+		// If business details exist, update them
+		if dbResult.RowsAffected > 0 {
+			if err := db.DB.Model(&businessDetails).Updates(updatedDetails).Error; err != nil {
+				result.Err = err
+				result.ErrType = "update_failed"
+				resultChan <- result
+				return
+			}
+		} else {
+			// If not exists, create new business details
+			if err := db.DB.Create(updatedDetails).Error; err != nil {
+				result.Err = err
+				result.ErrType = "create_failed"
+				resultChan <- result
+				return
+			}
+		}
+
+		// Get the updated/created business details
+		if err := db.DB.Where("provider_id = ?", userID).First(&result.Details).Error; err != nil {
+			result.Err = err
+			result.ErrType = "retrieve_failed"
+			resultChan <- result
+			return
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		switch result.ErrType {
+		case "update_failed":
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": "Failed to update business details",
 			})
-		}
-	} else {
-		// If not exists, create new business details
-		if err := db.DB.Create(updatedDetails).Error; err != nil {
+		case "create_failed":
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": "Failed to create business details",
+			})
+		case "retrieve_failed":
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to retrieve updated business details",
+			})
+		default:
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": result.Err.Error(),
 			})
 		}
 	}
 
-	// Get the updated/created business details
-	db.DB.Where("provider_id = ?", userID).First(&businessDetails)
-
 	return c.JSON(fiber.Map{
 		"message":          "Business details updated successfully",
-		"business_details": businessDetails,
+		"business_details": result.Details,
 	})
 }
 
@@ -286,15 +464,6 @@ func UploadBusinessMedia(c *fiber.Ctx) error {
 		})
 	}
 
-	// Check if BusinessDetails exists
-	var businessDetails models.BusinessDetails
-	if err := db.DB.Where("provider_id = ?", providerID).First(&businessDetails).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
-			Message: "Business details not found",
-			Error:   err.Error(),
-		})
-	}
-
 	// Parse multipart form (max 10 MB)
 	form, err := c.MultipartForm()
 	if err != nil {
@@ -313,136 +482,202 @@ func UploadBusinessMedia(c *fiber.Ctx) error {
 		})
 	}
 
-	// Handle profile picture
+	// Validate profile picture file type
 	profileFiles := form.File["profile_picture"]
+	var profileFile *multipart.FileHeader
 	if len(profileFiles) > 0 {
-		profileFile := profileFiles[0]
-		// Validate file type
+		profileFile = profileFiles[0]
 		allowedTypes := map[string]bool{"image/jpeg": true, "image/png": true}
 		if !allowedTypes[profileFile.Header.Get("Content-Type")] {
 			return c.Status(fiber.StatusBadRequest).JSON(utils.ErrorResponse{
 				Message: "Invalid profile picture type. Only JPEG/PNG allowed",
 			})
 		}
-
-		tempPath := filepath.Join(tempDir, profileFile.Filename)
-		if err := c.SaveFile(profileFile, tempPath); err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
-				Message: "Failed to save profile picture",
-				Error:   err.Error(),
-			})
-		}
-		defer os.Remove(tempPath) // Clean up
-
-		publicID := fmt.Sprintf("provider_%d_profile", providerID)
-		url, err := utils.UploadToCloudinary(tempPath, publicID, "provider_profiles")
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
-				Message: "Failed to upload profile picture to Cloudinary",
-				Error:   err.Error(),
-			})
-		}
-		businessDetails.ProfilePictureURL = url
 	}
 
-	// Handle certificates
+	// Validate certificate file types
 	certificateFiles := form.File["certificates"]
-	var certificateURLs []string
-
-	// Safely unmarshal existing certificate URLs if not empty
-	if businessDetails.CertificateURLs != "" {
-		if err := json.Unmarshal([]byte(businessDetails.CertificateURLs), &certificateURLs); err != nil {
-			// If there's an error, initialize as empty array rather than failing
-			certificateURLs = []string{}
-			log.Printf("Error parsing existing certificate URLs: %v. Initializing empty array.", err)
-		}
-	}
-
-	for i, certFile := range certificateFiles {
-		// Validate file type
+	for _, certFile := range certificateFiles {
 		if certFile.Header.Get("Content-Type") != "application/pdf" {
 			return c.Status(fiber.StatusBadRequest).JSON(utils.ErrorResponse{
 				Message: "Invalid certificate type. Only PDF allowed",
 			})
 		}
+	}
 
-		tempPath := filepath.Join(tempDir, certFile.Filename)
-		if err := c.SaveFile(certFile, tempPath); err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
-				Message: "Failed to save certificate",
-				Error:   err.Error(),
-			})
+	type uploadResult struct {
+		BusinessDetails   models.BusinessDetails
+		Provider          models.User
+		ProfilePictureURL string
+		CertificateURLs   []string
+		Err               error
+		ErrType           string
+		ErrMessage        string
+	}
+
+	resultChan := make(chan uploadResult)
+
+	go func() {
+		var result uploadResult
+
+		// Check if BusinessDetails exists
+		var businessDetails models.BusinessDetails
+		if err := db.DB.Where("provider_id = ?", providerID).First(&businessDetails).Error; err != nil {
+			result.Err = err
+			result.ErrType = "business_details_not_found"
+			result.ErrMessage = "Business details not found"
+			resultChan <- result
+			return
 		}
-		defer os.Remove(tempPath) // Clean up
 
-		publicID := fmt.Sprintf("provider_%d_cert_%d", providerID, i+1)
-		// Upload certificate without resizing by passing nil for the transformation
-		// Modify utils.UploadToCloudinary to accept nil transformation for PDFs
-		url, err := utils.UploadToCloudinary(tempPath, publicID, "certificates")
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
-				Message: "Failed to upload certificate to Cloudinary",
-				Error:   err.Error(),
-			})
+		// Handle profile picture
+		if profileFile != nil {
+			tempPath := filepath.Join(tempDir, profileFile.Filename)
+			if err := c.SaveFile(profileFile, tempPath); err != nil {
+				result.Err = err
+				result.ErrType = "save_profile_picture_failed"
+				result.ErrMessage = "Failed to save profile picture"
+				resultChan <- result
+				return
+			}
+			defer os.Remove(tempPath) // Clean up
+
+			publicID := fmt.Sprintf("provider_%d_profile", providerID)
+			url, err := utils.UploadToCloudinary(tempPath, publicID, "provider_profiles")
+			if err != nil {
+				result.Err = err
+				result.ErrType = "upload_profile_picture_failed"
+				result.ErrMessage = "Failed to upload profile picture to Cloudinary"
+				resultChan <- result
+				return
+			}
+			businessDetails.ProfilePictureURL = url
+			result.ProfilePictureURL = url
 		}
-		certificateURLs = append(certificateURLs, url)
-	}
 
-	// Update CertificateURLs - ensure it's always a valid JSON string array
-	if len(certificateURLs) > 0 {
-		urlsJSON, err := json.Marshal(certificateURLs)
-		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
-				Message: "Failed to serialize certificate URLs",
-				Error:   err.Error(),
-			})
+		// Handle certificates
+		var certificateURLs []string
+
+		// Safely unmarshal existing certificate URLs if not empty
+		if businessDetails.CertificateURLs != "" {
+			if err := json.Unmarshal([]byte(businessDetails.CertificateURLs), &certificateURLs); err != nil {
+				// If there's an error, initialize as empty array rather than failing
+				certificateURLs = []string{}
+				log.Printf("Error parsing existing certificate URLs: %v. Initializing empty array.", err)
+			}
 		}
-		businessDetails.CertificateURLs = string(urlsJSON)
-	} else if businessDetails.CertificateURLs == "" {
-		// Ensure we have a valid empty JSON array if there are no certificates
-		businessDetails.CertificateURLs = "[]"
-	}
 
-	// Save updates to database
-	if err := db.DB.Save(&businessDetails).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
-			Message: "Failed to update business details",
-			Error:   err.Error(),
-		})
-	}
+		for i, certFile := range certificateFiles {
+			tempPath := filepath.Join(tempDir, certFile.Filename)
+			if err := c.SaveFile(certFile, tempPath); err != nil {
+				result.Err = err
+				result.ErrType = "save_certificate_failed"
+				result.ErrMessage = "Failed to save certificate"
+				resultChan <- result
+				return
+			}
+			defer os.Remove(tempPath) // Clean up
 
-	// Send confirmation email
-	var provider models.User
-	if err := db.DB.First(&provider, providerID).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
-			Message: "Provider not found",
-			Error:   err.Error(),
-		})
-	}
+			publicID := fmt.Sprintf("provider_%d_cert_%d", providerID, i+1)
+			// Upload certificate without resizing by passing nil for the transformation
+			url, err := utils.UploadToCloudinary(tempPath, publicID, "certificates")
+			if err != nil {
+				result.Err = err
+				result.ErrType = "upload_certificate_failed"
+				result.ErrMessage = "Failed to upload certificate to Cloudinary"
+				resultChan <- result
+				return
+			}
+			certificateURLs = append(certificateURLs, url)
+		}
 
-	emailBody := fmt.Sprintf(`
-		<p>Dear %s,</p>
-		<p>Your profile media has been updated successfully.</p>
-		<p><strong>Details:</strong></p>
-		<ul>
-			<li><strong>Profile Picture:</strong> %s</li>
-			<li><strong>Certificates:</strong> %d uploaded</li>
-		</ul>
-		<p>Best regards,</p>
-		<p>Your Appointment Team</p>
-	`, provider.Name, businessDetails.ProfilePictureURL, len(certificateURLs))
-	if err := utils.SendEmail(provider.Email, "Profile Media Updated", emailBody); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
-			Message: "Failed to send confirmation email",
-			Error:   err.Error(),
+		// Update CertificateURLs - ensure it's always a valid JSON string array
+		if len(certificateURLs) > 0 {
+			urlsJSON, err := json.Marshal(certificateURLs)
+			if err != nil {
+				result.Err = err
+				result.ErrType = "serialize_urls_failed"
+				result.ErrMessage = "Failed to serialize certificate URLs"
+				resultChan <- result
+				return
+			}
+			businessDetails.CertificateURLs = string(urlsJSON)
+		} else if businessDetails.CertificateURLs == "" {
+			// Ensure we have a valid empty JSON array if there are no certificates
+			businessDetails.CertificateURLs = "[]"
+		}
+
+		// Save updates to database
+		if err := db.DB.Save(&businessDetails).Error; err != nil {
+			result.Err = err
+			result.ErrType = "update_business_details_failed"
+			result.ErrMessage = "Failed to update business details"
+			resultChan <- result
+			return
+		}
+
+		// Get provider details for email
+		var provider models.User
+		if err := db.DB.First(&provider, providerID).Error; err != nil {
+			result.Err = err
+			result.ErrType = "provider_not_found"
+			result.ErrMessage = "Provider not found"
+			resultChan <- result
+			return
+		}
+
+		// Send confirmation email
+		emailBody := fmt.Sprintf(`
+			<p>Dear %s,</p>
+			<p>Your profile media has been updated successfully.</p>
+			<p><strong>Details:</strong></p>
+			<ul>
+				<li><strong>Profile Picture:</strong> %s</li>
+				<li><strong>Certificates:</strong> %d uploaded</li>
+			</ul>
+			<p>Best regards,</p>
+			<p>Your Appointment Team</p>
+		`, provider.Name, businessDetails.ProfilePictureURL, len(certificateURLs))
+		if err := utils.SendEmail(provider.Email, "Profile Media Updated", emailBody); err != nil {
+			result.Err = err
+			result.ErrType = "send_email_failed"
+			result.ErrMessage = "Failed to send confirmation email"
+			resultChan <- result
+			return
+		}
+
+		result.BusinessDetails = businessDetails
+		result.Provider = provider
+		result.CertificateURLs = certificateURLs
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		return c.Status(getStatusCodeForError(result.ErrType)).JSON(utils.ErrorResponse{
+			Message: result.ErrMessage,
+			Error:   result.Err.Error(),
 		})
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message":          "Media uploaded successfully",
-		"profile_picture":  businessDetails.ProfilePictureURL,
-		"certificate_urls": certificateURLs,
+		"profile_picture":  result.BusinessDetails.ProfilePictureURL,
+		"certificate_urls": result.CertificateURLs,
 	})
+}
+
+// Helper function to determine status code based on error type
+func getStatusCodeForError(errType string) int {
+	switch errType {
+	case "business_details_not_found", "provider_not_found":
+		return fiber.StatusNotFound
+	case "save_profile_picture_failed", "save_certificate_failed", "upload_profile_picture_failed",
+		"upload_certificate_failed", "serialize_urls_failed", "update_business_details_failed", "send_email_failed":
+		return fiber.StatusInternalServerError
+	default:
+		return fiber.StatusInternalServerError
+	}
 }
 
 // GetProviderSettings retrieves the provider's settings
@@ -458,21 +693,44 @@ func UploadBusinessMedia(c *fiber.Ctx) error {
 func GetProviderSettings(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
-	var settings models.ProviderSettings
-	if err := db.DB.Where("provider_id = ?", userID).First(&settings).Error; err != nil {
-		// If settings not found, return default settings
-		return c.JSON(fiber.Map{
-			"settings": models.ProviderSettings{
+	type settingsResult struct {
+		Settings models.ProviderSettings
+		Found    bool
+		Err      error
+	}
+
+	resultChan := make(chan settingsResult)
+
+	go func() {
+		var result settingsResult
+
+		var settings models.ProviderSettings
+		if err := db.DB.Where("provider_id = ?", userID).First(&settings).Error; err != nil {
+			// If settings not found, prepare default settings
+			result.Settings = models.ProviderSettings{
 				ProviderID:           userID,
 				NotificationsEnabled: true,
 				AutoConfirmBookings:  false,
 				AdvanceBookingDays:   30,
-			},
+			}
+			result.Found = false
+		} else {
+			result.Settings = settings
+			result.Found = true
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to retrieve provider settings",
 		})
 	}
 
 	return c.JSON(fiber.Map{
-		"settings": settings,
+		"settings": result.Settings,
 	})
 }
 
@@ -492,10 +750,6 @@ func GetProviderSettings(c *fiber.Ctx) error {
 func UpdateProviderSettings(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
-	var settings models.ProviderSettings
-	// Try to find existing settings
-	result := db.DB.Where("provider_id = ?", userID).First(&settings)
-
 	// Parse update data
 	updatedSettings := new(models.ProviderSettings)
 	if err := c.BodyParser(updatedSettings); err != nil {
@@ -507,28 +761,75 @@ func UpdateProviderSettings(c *fiber.Ctx) error {
 	// Ensure provider ID is set correctly
 	updatedSettings.ProviderID = userID
 
-	// If settings exist, update them
-	if result.RowsAffected > 0 {
-		if err := db.DB.Model(&settings).Updates(updatedSettings).Error; err != nil {
+	type updateSettingsResult struct {
+		Settings models.ProviderSettings
+		Err      error
+		ErrType  string
+	}
+
+	resultChan := make(chan updateSettingsResult)
+
+	go func() {
+		var result updateSettingsResult
+
+		var settings models.ProviderSettings
+		// Try to find existing settings
+		dbResult := db.DB.Where("provider_id = ?", userID).First(&settings)
+
+		// If settings exist, update them
+		if dbResult.RowsAffected > 0 {
+			if err := db.DB.Model(&settings).Updates(updatedSettings).Error; err != nil {
+				result.Err = err
+				result.ErrType = "update_failed"
+				resultChan <- result
+				return
+			}
+		} else {
+			// If not exists, create new settings
+			if err := db.DB.Create(updatedSettings).Error; err != nil {
+				result.Err = err
+				result.ErrType = "create_failed"
+				resultChan <- result
+				return
+			}
+		}
+
+		// Get the updated/created settings
+		if err := db.DB.Where("provider_id = ?", userID).First(&result.Settings).Error; err != nil {
+			result.Err = err
+			result.ErrType = "retrieve_failed"
+			resultChan <- result
+			return
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		switch result.ErrType {
+		case "update_failed":
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": "Failed to update settings",
 			})
-		}
-	} else {
-		// If not exists, create new settings
-		if err := db.DB.Create(updatedSettings).Error; err != nil {
+		case "create_failed":
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": "Failed to create settings",
+			})
+		case "retrieve_failed":
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to retrieve updated settings",
+			})
+		default:
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": result.Err.Error(),
 			})
 		}
 	}
 
-	// Get the updated/created settings
-	db.DB.Where("provider_id = ?", userID).First(&settings)
-
 	return c.JSON(fiber.Map{
 		"message":  "Settings updated successfully",
-		"settings": settings,
+		"settings": result.Settings,
 	})
 }
 
@@ -547,22 +848,43 @@ func UpdateProviderSettings(c *fiber.Ctx) error {
 func GetWorkingHours(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
-	var workingHours []models.WorkingHours
-	if err := db.DB.Where("provider_id = ?", userID).Find(&workingHours).Error; err != nil {
+	type workingHoursResult struct {
+		Hours []models.WorkingHours
+		Err   error
+	}
+
+	resultChan := make(chan workingHoursResult)
+
+	go func() {
+		var result workingHoursResult
+
+		var workingHours []models.WorkingHours
+		if err := db.DB.Where("provider_id = ?", userID).Find(&workingHours).Error; err != nil {
+			result.Err = err
+			resultChan <- result
+			return
+		}
+
+		result.Hours = workingHours
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to retrieve working hours",
 		})
 	}
 
 	// If no working hours are found, return default template
-	if len(workingHours) == 0 {
+	if len(result.Hours) == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "No working hours found",
 		})
 	}
 
 	return c.JSON(fiber.Map{
-		"working_hours": workingHours,
+		"working_hours": result.Hours,
 	})
 }
 
@@ -663,37 +985,82 @@ func CreateWorkingHours(c *fiber.Ctx) error {
 		inputHours[i].ProviderID = userID
 	}
 
-	// Check if working hours already exist
-	var existingHours []models.WorkingHours
-	if err := db.DB.Where("provider_id = ?", userID).Find(&existingHours).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to check existing working hours",
-		})
-	}
-	if len(existingHours) > 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Working hours already exist; use update endpoint to modify",
-		})
+	type createHoursResult struct {
+		CreatedHours []models.WorkingHours
+		Err          error
+		ErrType      string
 	}
 
-	// Create working hours
-	if err := db.DB.Create(&inputHours).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to create working hours: " + err.Error(),
-		})
-	}
+	resultChan := make(chan createHoursResult)
 
-	// Retrieve created working hours
-	var createdHours []models.WorkingHours
-	if err := db.DB.Where("provider_id = ?", userID).Find(&createdHours).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to retrieve created working hours",
-		})
+	go func() {
+		var result createHoursResult
+
+		// Check if working hours already exist
+		var existingHours []models.WorkingHours
+		if err := db.DB.Where("provider_id = ?", userID).Find(&existingHours).Error; err != nil {
+			result.Err = err
+			result.ErrType = "check_failed"
+			resultChan <- result
+			return
+		}
+		if len(existingHours) > 0 {
+			result.Err = fmt.Errorf("working hours already exist")
+			result.ErrType = "already_exists"
+			resultChan <- result
+			return
+		}
+
+		// Create working hours
+		if err := db.DB.Create(&inputHours).Error; err != nil {
+			result.Err = err
+			result.ErrType = "create_failed"
+			resultChan <- result
+			return
+		}
+
+		// Retrieve created working hours
+		var createdHours []models.WorkingHours
+		if err := db.DB.Where("provider_id = ?", userID).Find(&createdHours).Error; err != nil {
+			result.Err = err
+			result.ErrType = "retrieve_failed"
+			resultChan <- result
+			return
+		}
+
+		result.CreatedHours = createdHours
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		switch result.ErrType {
+		case "check_failed":
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to check existing working hours",
+			})
+		case "already_exists":
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Working hours already exist; use update endpoint to modify",
+			})
+		case "create_failed":
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to create working hours: " + result.Err.Error(),
+			})
+		case "retrieve_failed":
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to retrieve created working hours",
+			})
+		default:
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": result.Err.Error(),
+			})
+		}
 	}
 
 	return c.JSON(fiber.Map{
 		"message":       "Working hours created successfully",
-		"working_hours": createdHours,
+		"working_hours": result.CreatedHours,
 	})
 }
 
@@ -789,69 +1156,95 @@ func UpdateWorkingHours(c *fiber.Ctx) error {
 		}
 	}
 
-	// Perform updates, creates, and deletes in a transaction
-	err := db.DB.Transaction(func(tx *gorm.DB) error {
-		// Fetch existing working hours
-		var existingHours []models.WorkingHours
-		if err := tx.Where("provider_id = ?", userID).Find(&existingHours).Error; err != nil {
-			return fmt.Errorf("failed to fetch existing working hours: %v", err)
-		}
-
-		// Create a map of existing hours by day_of_week for quick lookup
-		existingMap := make(map[models.DayOfWeek]models.WorkingHours)
-		for _, h := range existingHours {
-			existingMap[h.DayOfWeek] = h
-		}
-
-		// Process input hours
-		for _, input := range inputHours {
-			input.ProviderID = userID
-			if existing, exists := existingMap[input.DayOfWeek]; exists {
-				// Update existing record
-				if err := tx.Model(&existing).Updates(models.WorkingHours{
-					StartTime:  input.StartTime,
-					EndTime:    input.EndTime,
-					BreakStart: input.BreakStart,
-					BreakEnd:   input.BreakEnd,
-				}).Error; err != nil {
-					return fmt.Errorf("failed to update working hours for day %d: %v", input.DayOfWeek, err)
-				}
-			} else {
-				// Create new record
-				if err := tx.Create(&input).Error; err != nil {
-					return fmt.Errorf("failed to create working hours for day %d: %v", input.DayOfWeek, err)
-				}
-			}
-			// Remove from existingMap to track which days remain
-			delete(existingMap, input.DayOfWeek)
-		}
-
-		// Delete any remaining existing hours not in the input
-		for day := range existingMap {
-			if err := tx.Where("provider_id = ? AND day_of_week = ?", userID, day).Delete(&models.WorkingHours{}).Error; err != nil {
-				return fmt.Errorf("failed to delete working hours for day %d: %v", day, err)
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to update working hours: " + err.Error(),
-		})
+	// Set provider ID for all input hours
+	for i := range inputHours {
+		inputHours[i].ProviderID = userID
 	}
 
-	// Retrieve updated working hours
-	var workingHours []models.WorkingHours
-	if err := db.DB.Where("provider_id = ?", userID).Find(&workingHours).Error; err != nil {
+	type updateHoursResult struct {
+		UpdatedHours []models.WorkingHours
+		Err          error
+	}
+
+	resultChan := make(chan updateHoursResult)
+
+	go func() {
+		var result updateHoursResult
+
+		// Perform updates, creates, and deletes in a transaction
+		err := db.DB.Transaction(func(tx *gorm.DB) error {
+			// Fetch existing working hours
+			var existingHours []models.WorkingHours
+			if err := tx.Where("provider_id = ?", userID).Find(&existingHours).Error; err != nil {
+				return fmt.Errorf("failed to fetch existing working hours: %v", err)
+			}
+
+			// Create a map of existing hours by day_of_week for quick lookup
+			existingMap := make(map[models.DayOfWeek]models.WorkingHours)
+			for _, h := range existingHours {
+				existingMap[h.DayOfWeek] = h
+			}
+
+			// Process input hours
+			for _, input := range inputHours {
+				if existing, exists := existingMap[input.DayOfWeek]; exists {
+					// Update existing record
+					if err := tx.Model(&existing).Updates(models.WorkingHours{
+						StartTime:  input.StartTime,
+						EndTime:    input.EndTime,
+						BreakStart: input.BreakStart,
+						BreakEnd:   input.BreakEnd,
+					}).Error; err != nil {
+						return fmt.Errorf("failed to update working hours for day %d: %v", input.DayOfWeek, err)
+					}
+				} else {
+					// Create new record
+					if err := tx.Create(&input).Error; err != nil {
+						return fmt.Errorf("failed to create working hours for day %d: %v", input.DayOfWeek, err)
+					}
+				}
+				// Remove from existingMap to track which days remain
+				delete(existingMap, input.DayOfWeek)
+			}
+
+			// Delete any remaining existing hours not in the input
+			for day := range existingMap {
+				if err := tx.Where("provider_id = ? AND day_of_week = ?", userID, day).Delete(&models.WorkingHours{}).Error; err != nil {
+					return fmt.Errorf("failed to delete working hours for day %d: %v", day, err)
+				}
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			result.Err = err
+			resultChan <- result
+			return
+		}
+
+		// Retrieve updated working hours
+		var workingHours []models.WorkingHours
+		if err := db.DB.Where("provider_id = ?", userID).Find(&workingHours).Error; err != nil {
+			result.Err = fmt.Errorf("failed to retrieve updated working hours: %v", err)
+			resultChan <- result
+			return
+		}
+
+		result.UpdatedHours = workingHours
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to retrieve updated working hours: " + err.Error(),
+			"error": "Failed to update working hours: " + result.Err.Error(),
 		})
 	}
 
 	return c.JSON(fiber.Map{
 		"message":       "Working hours updated successfully",
-		"working_hours": workingHours,
+		"working_hours": result.UpdatedHours,
 	})
 }
 
@@ -892,33 +1285,73 @@ func CreateReceptionist(c *fiber.Ctx) error {
 	// Assign role ID for receptionist
 	receptionist.RoleID = 4
 
-	// Create the receptionist user
-	if err := db.DB.Create(receptionist).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to create receptionist: " + err.Error(),
-		})
+	type createReceptionistResult struct {
+		Receptionist *models.User
+		Err          error
+		ErrType      string
 	}
 
-	// Find the provider (assumed to be the authenticated user)
-	var provider models.User
-	if err := db.DB.Where("id = ?", userID).First(&provider).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Provider not found",
-		})
+	resultChan := make(chan createReceptionistResult)
+
+	go func() {
+		var result createReceptionistResult
+
+		// Create the receptionist user
+		if err := db.DB.Create(receptionist).Error; err != nil {
+			result.Err = err
+			result.ErrType = "create_failed"
+			resultChan <- result
+			return
+		}
+
+		// Find the provider (assumed to be the authenticated user)
+		var provider models.User
+		if err := db.DB.Where("id = ?", userID).First(&provider).Error; err != nil {
+			result.Err = err
+			result.ErrType = "provider_not_found"
+			resultChan <- result
+			return
+		}
+
+		// Create receptionist settings entry
+		receptionistSettings := models.ReceptionistSettings{
+			ReceptionistID: receptionist.ID,
+			ProviderID:     provider.ID,
+		}
+		if err := db.DB.Create(&receptionistSettings).Error; err != nil {
+			result.Err = err
+			result.ErrType = "settings_failed"
+			resultChan <- result
+			return
+		}
+
+		result.Receptionist = receptionist
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		switch result.ErrType {
+		case "create_failed":
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to create receptionist: " + result.Err.Error(),
+			})
+		case "provider_not_found":
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "Provider not found",
+			})
+		case "settings_failed":
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to create receptionist settings: " + result.Err.Error(),
+			})
+		default:
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": result.Err.Error(),
+			})
+		}
 	}
 
-	// Create receptionist settings entry
-	receptionistSettings := models.ReceptionistSettings{
-		ReceptionistID: receptionist.ID,
-		ProviderID:     provider.ID,
-	}
-	if err := db.DB.Create(&receptionistSettings).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to create receptionist settings: " + err.Error(),
-		})
-	}
-
-	return c.JSON(receptionist)
+	return c.JSON(result.Receptionist)
 }
 
 // GetReceptionistList retrieves the list of receptionists for the provider
@@ -936,40 +1369,78 @@ func CreateReceptionist(c *fiber.Ctx) error {
 func GetReceptionistList(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(uint)
 
-	// Find the provider
-	var provider models.User
-	if err := db.DB.Where("id = ?", userID).First(&provider).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Provider not found",
-		})
+	type receptionistListResult struct {
+		Receptionists []models.User
+		Err           error
+		ErrType       string
 	}
 
-	var receptionistSettings []models.ReceptionistSettings
-	if err := db.DB.Preload("Receptionist").Preload("Provider").Find(&receptionistSettings, "provider_id = ?", provider.ID).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to fetch receptionists: " + err.Error(),
-		})
-	}
-	// If no receptionists are found, return an empty list
-	if len(receptionistSettings) == 0 {
-		return c.JSON(fiber.Map{
-			"receptionists": []models.ReceptionistSettings{},
-		})
-	}
-	//find receptionist by receptionist id
-	var receptionistIDs []uint
-	for _, setting := range receptionistSettings {
-		receptionistIDs = append(receptionistIDs, setting.ReceptionistID)
+	resultChan := make(chan receptionistListResult)
+
+	go func() {
+		var result receptionistListResult
+
+		// Find the provider
+		var provider models.User
+		if err := db.DB.Where("id = ?", userID).First(&provider).Error; err != nil {
+			result.Err = err
+			result.ErrType = "provider_not_found"
+			resultChan <- result
+			return
+		}
+
+		var receptionistSettings []models.ReceptionistSettings
+		if err := db.DB.Preload("Receptionist").Preload("Provider").Find(&receptionistSettings, "provider_id = ?", provider.ID).Error; err != nil {
+			result.Err = err
+			result.ErrType = "settings_fetch_failed"
+			resultChan <- result
+			return
+		}
+
+		// If no receptionists are found, return an empty list
+		if len(receptionistSettings) == 0 {
+			result.Receptionists = []models.User{}
+			resultChan <- result
+			return
+		}
+
+		//find receptionist by receptionist id
+		var receptionistIDs []uint
+		for _, setting := range receptionistSettings {
+			receptionistIDs = append(receptionistIDs, setting.ReceptionistID)
+		}
+
+		var receptionists []models.User
+		if err := db.DB.Where("id IN ?", receptionistIDs).Find(&receptionists).Error; err != nil {
+			result.Err = err
+			result.ErrType = "receptionists_fetch_failed"
+			resultChan <- result
+			return
+		}
+
+		result.Receptionists = receptionists
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		switch result.ErrType {
+		case "provider_not_found":
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "Provider not found",
+			})
+		case "settings_fetch_failed", "receptionists_fetch_failed":
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to fetch receptionists: " + result.Err.Error(),
+			})
+		default:
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": result.Err.Error(),
+			})
+		}
 	}
 
-	var receptionists []models.User
-	if err := db.DB.Where("id IN ?", receptionistIDs).Find(&receptionists).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to fetch receptionists: " + err.Error(),
-		})
-	}
-
-	return c.JSON(receptionists)
+	return c.JSON(result.Receptionists)
 }
 
 // GetReceptionistByID retrieves a specific receptionist by ID
@@ -996,22 +1467,57 @@ func GetReceptionistByID(c *fiber.Ctx) error {
 		})
 	}
 
-	// Find the provider
-	var provider models.User
-	if err := db.DB.Where("id = ?", userID).First(&provider).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Provider not found",
-		})
+	type receptionistResult struct {
+		Receptionist models.User
+		Err          error
+		ErrType      string
 	}
 
-	var receptionist models.User
-	if err := db.DB.Where("id = ? AND role_id = 4", receptionistID).First(&receptionist).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Receptionist not found",
-		})
+	resultChan := make(chan receptionistResult)
+
+	go func() {
+		var result receptionistResult
+
+		// Find the provider
+		var provider models.User
+		if err := db.DB.Where("id = ?", userID).First(&provider).Error; err != nil {
+			result.Err = err
+			result.ErrType = "provider_not_found"
+			resultChan <- result
+			return
+		}
+
+		var receptionist models.User
+		if err := db.DB.Where("id = ? AND role_id = 4", receptionistID).First(&receptionist).Error; err != nil {
+			result.Err = err
+			result.ErrType = "receptionist_not_found"
+			resultChan <- result
+			return
+		}
+
+		result.Receptionist = receptionist
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		switch result.ErrType {
+		case "provider_not_found":
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "Provider not found",
+			})
+		case "receptionist_not_found":
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "Receptionist not found",
+			})
+		default:
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": result.Err.Error(),
+			})
+		}
 	}
 
-	return c.JSON(receptionist)
+	return c.JSON(result.Receptionist)
 }
 
 // DeleteReceptionist deletes a receptionist
@@ -1040,26 +1546,64 @@ func DeleteReceptionist(c *fiber.Ctx) error {
 		})
 	}
 
-	// Find the provider
-	var provider models.User
-	if err := db.DB.Where("id = ?", userID).First(&provider).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Provider not found",
-		})
+	type deleteResult struct {
+		Err     error
+		ErrType string
 	}
 
-	// Delete the receptionist settings
-	if err := db.DB.Where("receptionist_id = ? AND provider_id = ?", receptionistID, provider.ID).Delete(&models.ReceptionistSettings{}).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to delete receptionist settings: " + err.Error(),
-		})
-	}
+	resultChan := make(chan deleteResult)
 
-	// Delete the receptionist user
-	if err := db.DB.Delete(&models.User{}, receptionistID).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to delete receptionist: " + err.Error(),
-		})
+	go func() {
+		var result deleteResult
+
+		// Find the provider
+		var provider models.User
+		if err := db.DB.Where("id = ?", userID).First(&provider).Error; err != nil {
+			result.Err = err
+			result.ErrType = "provider_not_found"
+			resultChan <- result
+			return
+		}
+
+		// Delete the receptionist settings
+		if err := db.DB.Where("receptionist_id = ? AND provider_id = ?", receptionistID, provider.ID).Delete(&models.ReceptionistSettings{}).Error; err != nil {
+			result.Err = err
+			result.ErrType = "settings_delete_failed"
+			resultChan <- result
+			return
+		}
+
+		// Delete the receptionist user
+		if err := db.DB.Delete(&models.User{}, receptionistID).Error; err != nil {
+			result.Err = err
+			result.ErrType = "receptionist_delete_failed"
+			resultChan <- result
+			return
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		switch result.ErrType {
+		case "provider_not_found":
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "Provider not found",
+			})
+		case "settings_delete_failed":
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to delete receptionist settings: " + result.Err.Error(),
+			})
+		case "receptionist_delete_failed":
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to delete receptionist: " + result.Err.Error(),
+			})
+		default:
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": result.Err.Error(),
+			})
+		}
 	}
 
 	return c.JSON(fiber.Map{

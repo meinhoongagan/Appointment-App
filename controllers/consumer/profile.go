@@ -76,39 +76,46 @@ type UserDetailsInput struct {
 // @Failure 500 {object} fiber.Map{error=string} "Internal server error"
 // @Router /consumer/profile [post]
 func CreateUserProfile(c *fiber.Ctx) error {
-	userID, ok := c.Locals("userID").(uint)
-	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Invalid user ID in token",
-		})
-	}
-	var input UserDetailsInput
-	if err := c.BodyParser(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid input",
-		})
-	}
-	var services []models.Service
-	if len(input.FavoriteServiceIDs) > 0 {
-		if err := db.DB.Where("id IN ?", input.FavoriteServiceIDs).Find(&services).Error; err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "Failed to fetch favorite services",
-			})
+	userProfileChan := make(chan models.UserDetails)
+
+	go func() {
+		userID, ok := c.Locals("userID").(uint)
+		if !ok {
+			userProfileChan <- models.UserDetails{}
+			return
 		}
-	}
-	userDetails := models.UserDetails{
-		UserID:           userID,
-		FavoriteServices: services,
-	}
-	if err := db.DB.Create(&userDetails).Error; err != nil {
+		var input UserDetailsInput
+		if err := c.BodyParser(&input); err != nil {
+			userProfileChan <- models.UserDetails{}
+			return
+		}
+		var services []models.Service
+		if len(input.FavoriteServiceIDs) > 0 {
+			if err := db.DB.Where("id IN ?", input.FavoriteServiceIDs).Find(&services).Error; err != nil {
+				userProfileChan <- models.UserDetails{}
+				return
+			}
+		}
+		userDetails := models.UserDetails{
+			UserID:           userID,
+			FavoriteServices: services,
+		}
+		if err := db.DB.Create(&userDetails).Error; err != nil {
+			userProfileChan <- models.UserDetails{}
+			return
+		}
+		var createdDetails models.UserDetails
+		if err := db.DB.Preload("FavoriteServices").First(&createdDetails, userDetails.ID).Error; err != nil {
+			userProfileChan <- models.UserDetails{}
+			return
+		}
+		userProfileChan <- createdDetails
+	}()
+
+	createdDetails := <-userProfileChan
+	if createdDetails.ID == 0 {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to create user details",
-		})
-	}
-	var createdDetails models.UserDetails
-	if err := db.DB.Preload("FavoriteServices").First(&createdDetails, userDetails.ID).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to fetch created user details",
 		})
 	}
 	return c.Status(fiber.StatusCreated).JSON(createdDetails)
@@ -128,36 +135,46 @@ func CreateUserProfile(c *fiber.Ctx) error {
 // @Failure 500 {object} fiber.Map{error=string} "Internal server error"
 // @Router /consumer/profile [patch]
 func UpdateUserProfile(c *fiber.Ctx) error {
-	userID, ok := c.Locals("userID").(uint)
-	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Invalid user ID in token",
-		})
-	}
-	var input UserDetailsInput
-	if err := c.BodyParser(&input); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid input",
-		})
-	}
-	var services []models.Service
-	if len(input.FavoriteServiceIDs) > 0 {
-		if err := db.DB.Where("id IN ?", input.FavoriteServiceIDs).Find(&services).Error; err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "Failed to fetch favorite services",
-			})
+	userProfileChan := make(chan models.UserDetails)
+
+	go func() {
+		userID, ok := c.Locals("userID").(uint)
+		if !ok {
+			userProfileChan <- models.UserDetails{}
+			return
 		}
-	}
-	userDetails := models.UserDetails{
-		UserID:           userID,
-		FavoriteServices: services,
-	}
-	if err := db.DB.Save(&userDetails).Error; err != nil {
+		var input UserDetailsInput
+		if err := c.BodyParser(&input); err != nil {
+			userProfileChan <- models.UserDetails{}
+			return
+		}
+		var services []models.Service
+		if len(input.FavoriteServiceIDs) > 0 {
+			if err := db.DB.Where("id IN ?", input.FavoriteServiceIDs).Find(&services).Error; err != nil {
+				userProfileChan <- models.UserDetails{}
+				return
+			}
+		}
+		var userDetails models.UserDetails
+		if err := db.DB.Preload("FavoriteServices").First(&userDetails, userID).Error; err != nil {
+			userProfileChan <- models.UserDetails{}
+			return
+		}
+		userDetails.FavoriteServices = services
+		if err := db.DB.Save(&userDetails).Error; err != nil {
+			userProfileChan <- models.UserDetails{}
+			return
+		}
+		userProfileChan <- userDetails
+	}()
+
+	updatedDetails := <-userProfileChan
+	if updatedDetails.ID == 0 {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update user details",
 		})
 	}
-	return c.JSON(userDetails)
+	return c.JSON(updatedDetails)
 }
 
 // UpdateUserProfilePicture updates the user's profile picture
@@ -174,42 +191,51 @@ func UpdateUserProfile(c *fiber.Ctx) error {
 // @Failure 500 {object} fiber.Map{error=string} "Internal server error"
 // @Router /consumer/profile/picture [post]
 func UpdateUserProfilePicture(c *fiber.Ctx) error {
-	userID, ok := c.Locals("userID").(uint)
-	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Invalid user ID in token",
-		})
-	}
-	file, err := c.FormFile("profile_picture")
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Failed to get profile picture",
-		})
-	}
-	f, err := file.Open()
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to open profile picture",
-		})
-	}
-	defer f.Close()
-	publicID := fmt.Sprintf("user_%d_%d", userID, time.Now().Unix())
-	secureURL, err := utils.UploadToCloudinary(f, publicID, "profile_pictures")
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to upload profile picture to Cloudinary",
-		})
-	}
-	userDetails := models.UserDetails{
-		UserID:         userID,
-		ProfilePicture: secureURL,
-	}
-	if err := db.DB.Save(&userDetails).Error; err != nil {
+	userProfilePictureChan := make(chan models.UserDetails)
+
+	go func() {
+		userID, ok := c.Locals("userID").(uint)
+		if !ok {
+			userProfilePictureChan <- models.UserDetails{}
+			return
+		}
+		file, err := c.FormFile("profile_picture")
+		if err != nil {
+			userProfilePictureChan <- models.UserDetails{}
+			return
+		}
+		f, err := file.Open()
+		if err != nil {
+			userProfilePictureChan <- models.UserDetails{}
+			return
+		}
+		defer f.Close()
+		publicID := fmt.Sprintf("user_%d_%d", userID, time.Now().Unix())
+		secureURL, err := utils.UploadToCloudinary(f, publicID, "profile_pictures")
+		if err != nil {
+			userProfilePictureChan <- models.UserDetails{}
+			return
+		}
+		var userDetails models.UserDetails
+		if err := db.DB.Preload("FavoriteServices").First(&userDetails, userID).Error; err != nil {
+			userProfilePictureChan <- models.UserDetails{}
+			return
+		}
+		userDetails.ProfilePicture = secureURL
+		if err := db.DB.Save(&userDetails).Error; err != nil {
+			userProfilePictureChan <- models.UserDetails{}
+			return
+		}
+		userProfilePictureChan <- userDetails
+	}()
+
+	updatedDetails := <-userProfilePictureChan
+	if updatedDetails.ID == 0 {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to update profile picture",
 		})
 	}
-	return c.JSON(userDetails)
+	return c.JSON(updatedDetails)
 }
 
 // DeleteUserProfile deletes the user profile

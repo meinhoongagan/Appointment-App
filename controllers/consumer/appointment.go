@@ -22,11 +22,21 @@ import (
 // @Failure 500 {object} utils.ErrorResponse "Internal server error"
 // @Router /appointments [get]
 func GetAllAppointments(c *fiber.Ctx) error {
-	var appointments []models.Appointment
-	if err := db.DB.Preload("Service").Preload("Provider").Preload("Customer").Find(&appointments).Error; err != nil {
+	appointmentChan := make(chan []models.Appointment)
+	go func() {
+		var appointments []models.Appointment
+		if err := db.DB.Preload("Service").Preload("Provider").Preload("Customer").Find(&appointments).Error; err != nil {
+			appointmentChan <- nil
+			return
+		}
+		appointmentChan <- appointments
+	}()
+
+	appointments := <-appointmentChan
+	if appointments == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
 			Message: "Failed to fetch appointments",
-			Error:   err.Error(),
+			Error:   "Database error",
 		})
 	}
 	return c.JSON(appointments)
@@ -44,12 +54,22 @@ func GetAllAppointments(c *fiber.Ctx) error {
 // @Failure 404 {object} utils.ErrorResponse "Appointment not found"
 // @Router /appointments/{id} [get]
 func GetAppointment(c *fiber.Ctx) error {
-	id := c.Params("id")
-	var appointment models.Appointment
-	if err := db.DB.Preload("Service").Preload("Provider").Preload("Customer").First(&appointment, id).Error; err != nil {
+	appointmentChain := make(chan models.Appointment)
+	go func() {
+		id := c.Params("id")
+		var appointment models.Appointment
+		if err := db.DB.Preload("Service").Preload("Provider").Preload("Customer").First(&appointment, id).Error; err != nil {
+			appointmentChain <- models.Appointment{}
+			return
+		}
+		appointmentChain <- appointment
+	}()
+
+	appointment := <-appointmentChain
+	if appointment.ID == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
 			Message: "Appointment not found",
-			Error:   err.Error(),
+			Error:   "Database error",
 		})
 	}
 	return c.JSON(appointment)
@@ -67,22 +87,28 @@ func GetAppointment(c *fiber.Ctx) error {
 // @Failure 404 {object} fiber.Map "Service not found"
 // @Router /appointments/service/{id} [get]
 func GetServiceDetails(c *fiber.Ctx) error {
-	id := c.Params("id")
+	serviceChan := make(chan models.Service)
 
-	var service models.Service
-	if err := db.DB.First(&service, id).Error; err != nil {
+	go func() {
+		id := c.Params("id")
+		var service models.Service
+		if err := db.DB.First(&service, id).Error; err != nil {
+			service = models.Service{}
+		} else {
+			// Optionally preload provider or category
+			if err := db.DB.Preload("Provider").Preload("Category").First(&service, id).Error; err != nil {
+				service = models.Service{}
+			}
+		}
+		serviceChan <- service
+	}()
+
+	service := <-serviceChan
+	if service.ID == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Service not found",
 		})
 	}
-
-	// Optionally preload provider or category
-	if err := db.DB.Preload("Provider").Preload("Category").First(&service, id).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Service not found",
-		})
-	}
-
 	return c.JSON(service)
 }
 
@@ -169,7 +195,7 @@ func CreateAppointment(c *fiber.Ctx) error {
 	// Create appointment and recurrence in a transaction
 	err = db.DB.Transaction(func(tx *gorm.DB) error {
 		// Check availability again to prevent conflicts
-		available, err := utils.CheckAvailability(appointment.ProviderID, appointment.StartTime, duration)
+		available, err = utils.CheckAvailability(appointment.ProviderID, appointment.StartTime, duration)
 		if err != nil {
 			return err
 		}
@@ -178,7 +204,7 @@ func CreateAppointment(c *fiber.Ctx) error {
 		}
 
 		// Create the appointment
-		if err := tx.Create(&appointment).Error; err != nil {
+		if createErr := tx.Create(&appointment).Error; createErr != nil {
 			return err
 		}
 
@@ -192,12 +218,12 @@ func CreateAppointment(c *fiber.Ctx) error {
 			}
 
 			// Create the recurrence
-			if err := tx.Create(&recurrence).Error; err != nil {
+			if createRecErr := tx.Create(&recurrence).Error; createRecErr != nil {
 				return fmt.Errorf("failed to create recurrence: %v", err)
 			}
 
 			// Link recurrence to the appointment
-			if err := tx.Model(&appointment).Update("recurrence_id", recurrence.ID).Error; err != nil {
+			if updateErr := tx.Model(&appointment).Update("recurrence_id", recurrence.ID).Error; updateErr != nil {
 				return fmt.Errorf("failed to update appointment with recurrence_id: %v", err)
 			}
 		}
@@ -387,14 +413,14 @@ func UpdateAppointment(c *fiber.Ctx) error {
 	})
 	// find consumer and provider to send emails
 	var customer models.User
-	if err := db.DB.First(&customer, existingAppointment.CustomerID).Error; err != nil {
+	if dbErr := db.DB.First(&customer, existingAppointment.CustomerID).Error; dbErr != nil {
 		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
 			Message: "Customer not found",
 			Error:   err.Error(),
 		})
 	}
 	var provider models.User
-	if err := db.DB.First(&provider, existingAppointment.ProviderID).Error; err != nil {
+	if dbErr := db.DB.First(&provider, existingAppointment.ProviderID).Error; dbErr != nil {
 		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
 			Message: "Provider not found",
 			Error:   err.Error(),
@@ -402,10 +428,10 @@ func UpdateAppointment(c *fiber.Ctx) error {
 	}
 	// find service to send emails
 	var service models.Service
-	if err := db.DB.First(&service, existingAppointment.ServiceID).Error; err != nil {
+	if dbErr := db.DB.First(&service, existingAppointment.ServiceID).Error; dbErr != nil {
 		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
 			Message: "Service not found",
-			Error:   err.Error(),
+			Error:   dbErr.Error(),
 		})
 	}
 	// Send confirmation email
@@ -423,7 +449,7 @@ func UpdateAppointment(c *fiber.Ctx) error {
 		<p>Best regards,<br>
 		Your Appointment Management System</p>
 	`, customer.Name, updatedAppointment.Title, updatedAppointment.Description, updatedAppointment.StartTime, updatedAppointment.EndTime, service.Name, provider.Name)
-	if err := utils.SendEmail(customer.Email, "Appointment Updated", emailBody); err != nil {
+	if emailErr := utils.SendEmail(customer.Email, "Appointment Updated", emailBody); emailErr != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
 			Message: "Failed to send confirmation email",
 			Error:   err.Error(),
@@ -444,7 +470,7 @@ func UpdateAppointment(c *fiber.Ctx) error {
 		<p>Best regards,<br>
 		Your Appointment Management System</p>
 	`, provider.Name, updatedAppointment.Title, updatedAppointment.Description, updatedAppointment.StartTime, updatedAppointment.EndTime, service.Name, customer.Name)
-	if err := utils.SendEmail(provider.Email, "Appointment Updated", emailBody); err != nil {
+	if emailErr := utils.SendEmail(provider.Email, "Appointment Updated", emailBody); emailErr != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
 			Message: "Failed to send confirmation email to provider",
 			Error:   err.Error(),
@@ -477,45 +503,40 @@ func UpdateAppointment(c *fiber.Ctx) error {
 // @Failure 500 {object} utils.ErrorResponse "Internal server error"
 // @Router /appointments [get]
 func GetUpcomingAppointments(c *fiber.Ctx) error {
-	var appointments []models.Appointment
-	status := c.Query("status")
-	if status == "" {
-		return c.Status(fiber.StatusBadRequest).JSON(utils.ErrorResponse{
-			Message: "Status query parameter is required",
-		})
-	}
-	if status != "upcoming" && status != "history" {
-		return c.Status(fiber.StatusBadRequest).JSON(utils.ErrorResponse{
-			Message: "Invalid status value. Use 'upcoming' or 'history'",
-		})
-	}
-	// Get the user ID from the JWT token
-	userID, ok := c.Locals("userID").(uint)
-	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(utils.ErrorResponse{
-			Message: "Invalid user ID in token",
-		})
-	}
-	// Get the current time in UTC
-	currentTime := time.Now().UTC()
-	// Query the database based on the status
-	if status == "upcoming" {
-		if err := db.DB.Where("customer_id = ? AND start_time > ?", userID, currentTime).Preload("Service").Preload("Provider").Find(&appointments).Error; err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
-				Message: "Failed to fetch upcoming appointments",
-				Error:   err.Error(),
-			})
+	appointmentsChan := make(chan []models.Appointment)
+
+	go func() {
+		var appointments []models.Appointment
+		status := c.Query("status")
+		if status == "" {
+			appointments = []models.Appointment{}
+		} else if status != "upcoming" && status != "history" {
+			appointments = []models.Appointment{}
+		} else {
+			// Get the user ID from the JWT token
+			userID, ok := c.Locals("userID").(uint)
+			if !ok {
+				appointments = []models.Appointment{}
+			} else {
+				// Get the current time in UTC
+				currentTime := time.Now().UTC()
+				// Query the database based on the status
+				if status == "upcoming" {
+					if err := db.DB.Where("customer_id = ? AND start_time > ?", userID, currentTime).Preload("Service").Preload("Provider").Find(&appointments).Error; err != nil {
+						appointments = []models.Appointment{}
+					}
+				}
+				if status == "history" {
+					if err := db.DB.Where("customer_id = ? AND start_time < ?", userID, currentTime).Preload("Service").Preload("Provider").Find(&appointments).Error; err != nil {
+						appointments = []models.Appointment{}
+					}
+				}
+			}
 		}
-	}
-	if status == "history" {
-		if err := db.DB.Where("customer_id = ? AND start_time < ?", userID, currentTime).Preload("Service").Preload("Provider").Find(&appointments).Error; err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
-				Message: "Failed to fetch appointment history",
-				Error:   err.Error(),
-			})
-		}
-	}
-	// Return the appointments
+		appointmentsChan <- appointments
+	}()
+
+	appointments := <-appointmentsChan
 	if len(appointments) == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
 			Message: "No appointments found",

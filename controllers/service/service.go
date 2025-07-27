@@ -21,21 +21,33 @@ import (
 // @Failure 500 {object} fiber.Map{error=string} "Internal server error"
 // @Router /provider/services [get]
 func GetAllServices(c *fiber.Ctx) error {
-	var services []models.Service
+	servicesChan := make(chan []models.Service)
+	errorChan := make(chan error)
 
-	// Preload Provider and its Role properly
-	if err := db.DB.Debug().
-		Preload("Provider.Role").
-		Find(&services).Error; err != nil {
+	go func() {
+		var services []models.Service
+
+		// Preload Provider and its Role properly
+		if err := db.DB.Debug().
+			Preload("Provider.Role").
+			Find(&services).Error; err != nil {
+			errorChan <- err
+			return
+		}
+
+		// Log services for debugging
+		fmt.Printf("Fetched all services: %+v\n", services)
+		servicesChan <- services
+	}()
+
+	select {
+	case services := <-servicesChan:
+		return c.JSON(services)
+	case err := <-errorChan:
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
-
-	// Log services for debugging
-	fmt.Printf("Fetched all services: %+v\n", services)
-
-	return c.JSON(services)
 }
 
 // GetService retrieves a specific service by ID
@@ -56,13 +68,27 @@ func GetService(c *fiber.Ctx) error {
 			"error": "Invalid service ID",
 		})
 	}
-	var service models.Service
-	if err := db.DB.Preload("Provider.Role").First(&service, id).Error; err != nil {
+
+	serviceChan := make(chan models.Service)
+	errorChan := make(chan error)
+
+	go func() {
+		var service models.Service
+		if err := db.DB.Preload("Provider.Role").First(&service, id).Error; err != nil {
+			errorChan <- err
+			return
+		}
+		serviceChan <- service
+	}()
+
+	select {
+	case service := <-serviceChan:
+		return c.JSON(service)
+	case <-errorChan:
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Service not found",
 		})
 	}
-	return c.JSON(service)
 }
 
 // GetMyServices returns all services of the authenticated provider
@@ -99,19 +125,37 @@ func GetMyServices(c *fiber.Ctx) error {
 		fmt.Println("User ID from receptionist settings:", userID)
 	}
 
-	var services []models.Service
-	if err := db.DB.Preload("Provider.Role").
-		Where("provider_id = ?", userID).
-		Find(&services).Error; err != nil {
+	type serviceResult struct {
+		Services []models.Service
+		Err      error
+	}
+
+	resultChan := make(chan serviceResult)
+
+	go func() {
+		var result serviceResult
+
+		if err := db.DB.Preload("Provider.Role").
+			Where("provider_id = ?", userID).
+			Find(&result.Services).Error; err != nil {
+			result.Err = err
+			resultChan <- result
+			return
+		}
+
+		// Log services for debugging
+		fmt.Printf("Fetched services for user %d: %+v\n", userID, result.Services)
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch services",
 		})
 	}
 
-	// Log services for debugging
-	fmt.Printf("Fetched services for user %d: %+v\n", userID, services)
-
-	return c.JSON(services)
+	return c.JSON(result.Services)
 }
 
 // SearchServiceNames returns a list of service names matching the search query
@@ -133,17 +177,37 @@ func SearchServiceNames(c *fiber.Ctx) error {
 		})
 	}
 	search = strings.ToLower(search)
-	var serviceNames []string
-	if err := db.DB.Debug().
-		Model(&models.Service{}). // Specify the Service model
-		Where("LOWER(name) LIKE ?", "%"+search+"%").
-		Pluck("name", &serviceNames).Error; err != nil {
+
+	type searchResult struct {
+		ServiceNames []string
+		Err          error
+	}
+
+	resultChan := make(chan searchResult)
+
+	go func() {
+		var result searchResult
+
+		if err := db.DB.Debug().
+			Model(&models.Service{}). // Specify the Service model
+			Where("LOWER(name) LIKE ?", "%"+search+"%").
+			Pluck("name", &result.ServiceNames).Error; err != nil {
+			result.Err = err
+			resultChan <- result
+			return
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
+			"error": result.Err.Error(),
 		})
 	}
 
-	return c.JSON(serviceNames)
+	return c.JSON(result.ServiceNames)
 }
 
 // SearchServiceByName searches services by name
@@ -168,23 +232,44 @@ func SearchServiceByName(c *fiber.Ctx) error {
 		})
 	}
 	name = strings.ToLower(name)
-	var services []models.Service
-	if err := db.DB.Debug().
-		Where("LOWER(name) LIKE ?", "%"+name+"%").
-		Find(&services).Error; err != nil {
+
+	type searchResult struct {
+		Services []models.Service
+		Err      error
+	}
+
+	resultChan := make(chan searchResult)
+
+	go func() {
+		var result searchResult
+
+		if err := db.DB.Debug().
+			Where("LOWER(name) LIKE ?", "%"+name+"%").
+			Find(&result.Services).Error; err != nil {
+			result.Err = err
+			resultChan <- result
+			return
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
+			"error": result.Err.Error(),
 		})
 	}
-	if len(services) == 0 {
+
+	if len(result.Services) == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "No services found with the given name",
 		})
-	} else {
-		// Log services for debugging
-		fmt.Printf("Fetched services matching name '%s': %+v\n", name, services)
-		return c.JSON(services)
 	}
+
+	// Log services for debugging
+	fmt.Printf("Fetched services matching name '%s': %+v\n", name, result.Services)
+	return c.JSON(result.Services)
 }
 
 // CreateService creates a new service
@@ -227,26 +312,50 @@ func CreateService(c *fiber.Ctx) error {
 		})
 	}
 
-	// Find the provider
-	var provider models.User
-	if err := db.DB.Where("id = ?", userID).First(&provider).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Provider not found",
+	type createResult struct {
+		Service models.Service
+		Err     error
+		Status  int
+	}
+
+	resultChan := make(chan createResult)
+
+	go func() {
+		var result createResult
+		result.Service = *service
+
+		// Find the provider
+		var provider models.User
+		if err := db.DB.Where("id = ?", userID).First(&provider).Error; err != nil {
+			result.Err = fmt.Errorf("provider not found")
+			result.Status = fiber.StatusNotFound
+			resultChan <- result
+			return
+		}
+
+		// Set ProviderID and Provider from JWT userID
+		result.Service.ProviderID = userID
+		result.Service.Provider = provider
+
+		// Create the service
+		if err := db.DB.Create(&result.Service).Error; err != nil {
+			result.Err = fmt.Errorf("failed to create service: %v", err)
+			result.Status = fiber.StatusInternalServerError
+			resultChan <- result
+			return
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		return c.Status(result.Status).JSON(fiber.Map{
+			"error": result.Err.Error(),
 		})
 	}
 
-	// Set ProviderID and Provider from JWT userID
-	service.ProviderID = userID
-	service.Provider = provider
-
-	// Create the service
-	if err := db.DB.Create(service).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to create service: " + err.Error(),
-		})
-	}
-
-	return c.JSON(service)
+	return c.JSON(result.Service)
 }
 
 // UpdateService updates a service
@@ -279,21 +388,6 @@ func UpdateService(c *fiber.Ctx) error {
 	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Invalid user ID in token",
-		})
-	}
-
-	// Find existing service
-	var existingService models.Service
-	if err := db.DB.First(&existingService, id).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Service not found",
-		})
-	}
-
-	// Verify the service belongs to the authenticated provider
-	if existingService.ProviderID != userID {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "You do not have permission to update this service",
 		})
 	}
 
@@ -381,23 +475,62 @@ func UpdateService(c *fiber.Ctx) error {
 		}
 	}
 
-	// Perform update only on provided fields
-	if len(updateMap) > 0 {
-		if err := db.DB.Model(&existingService).Updates(updateMap).Error; err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "Failed to update service: " + err.Error(),
-			})
-		}
+	type updateResult struct {
+		Service models.Service
+		Err     error
+		Status  int
 	}
 
-	// Retrieve the updated service with preloaded Provider
-	if err := db.DB.Preload("Provider.Role").First(&existingService, id).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to retrieve updated service: " + err.Error(),
+	resultChan := make(chan updateResult)
+
+	go func() {
+		var result updateResult
+
+		// Find existing service
+		if err := db.DB.First(&result.Service, id).Error; err != nil {
+			result.Err = fmt.Errorf("service not found")
+			result.Status = fiber.StatusNotFound
+			resultChan <- result
+			return
+		}
+
+		// Verify the service belongs to the authenticated provider
+		if result.Service.ProviderID != userID {
+			result.Err = fmt.Errorf("you do not have permission to update this service")
+			result.Status = fiber.StatusForbidden
+			resultChan <- result
+			return
+		}
+
+		// Perform update only on provided fields
+		if len(updateMap) > 0 {
+			if err := db.DB.Model(&result.Service).Updates(updateMap).Error; err != nil {
+				result.Err = fmt.Errorf("failed to update service: %v", err)
+				result.Status = fiber.StatusInternalServerError
+				resultChan <- result
+				return
+			}
+		}
+
+		// Retrieve the updated service with preloaded Provider
+		if err := db.DB.Preload("Provider.Role").First(&result.Service, id).Error; err != nil {
+			result.Err = fmt.Errorf("failed to retrieve updated service: %v", err)
+			result.Status = fiber.StatusInternalServerError
+			resultChan <- result
+			return
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		return c.Status(result.Status).JSON(fiber.Map{
+			"error": result.Err.Error(),
 		})
 	}
 
-	return c.JSON(existingService)
+	return c.JSON(result.Service)
 }
 
 // DeleteService deletes a service
@@ -432,25 +565,48 @@ func DeleteService(c *fiber.Ctx) error {
 		})
 	}
 
-	// Find the service
-	var service models.Service
-	if err := db.DB.First(&service, id).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Service not found",
-		})
+	type deleteResult struct {
+		Err    error
+		Status int
 	}
 
-	// Verify the service belongs to the authenticated provider
-	if service.ProviderID != userID {
-		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "You do not have permission to delete this service",
-		})
-	}
+	resultChan := make(chan deleteResult)
 
-	// Delete the service
-	if err := db.DB.Delete(&service).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to delete service: " + err.Error(),
+	go func() {
+		var result deleteResult
+
+		// Find the service
+		var service models.Service
+		if err := db.DB.First(&service, id).Error; err != nil {
+			result.Err = fmt.Errorf("service not found")
+			result.Status = fiber.StatusNotFound
+			resultChan <- result
+			return
+		}
+
+		// Verify the service belongs to the authenticated provider
+		if service.ProviderID != userID {
+			result.Err = fmt.Errorf("you do not have permission to delete this service")
+			result.Status = fiber.StatusForbidden
+			resultChan <- result
+			return
+		}
+
+		// Delete the service
+		if err := db.DB.Delete(&service).Error; err != nil {
+			result.Err = fmt.Errorf("failed to delete service: %v", err)
+			result.Status = fiber.StatusInternalServerError
+			resultChan <- result
+			return
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		return c.Status(result.Status).JSON(fiber.Map{
+			"error": result.Err.Error(),
 		})
 	}
 

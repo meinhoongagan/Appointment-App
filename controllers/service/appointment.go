@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -28,7 +29,7 @@ func GetAllAppointments(c *fiber.Ctx) error {
 	appointmentStatus := c.Query("status")
 	month := c.Query("month")
 	year := c.Query("year")
-	var appointments []models.Appointment
+
 	//Get appointments for service provider take provider id from c.Locals("userID")
 	userID, ok := c.Locals("userID").(uint)
 	if !ok {
@@ -49,34 +50,49 @@ func GetAllAppointments(c *fiber.Ctx) error {
 			"error": "Access denied. Only providers and receptionists can access this endpoint.",
 		})
 	}
-	query := db.DB.
-		Preload("Service").
-		Preload("Provider").
-		Preload("Customer").
-		Where("provider_id = ?", userID)
 
-	if appointmentStatus != "" {
-		query = query.Where("status = ?", appointmentStatus)
-	}
+	appointmentsChan := make(chan []models.Appointment)
+	errorChan := make(chan error)
 
-	// Filter by month and year if provided
-	if month != "" && year != "" {
-		// Parse month and year
-		m, errM := strconv.Atoi(month)
-		y, errY := strconv.Atoi(year)
-		if errM == nil && errY == nil {
-			start := time.Date(y, time.Month(m), 1, 0, 0, 0, 0, time.UTC)
-			end := start.AddDate(0, 1, 0)
-			query = query.Where("start_time >= ? AND start_time < ?", start, end)
+	go func() {
+		var appointments []models.Appointment
+		query := db.DB.
+			Preload("Service").
+			Preload("Provider").
+			Preload("Customer").
+			Where("provider_id = ?", userID)
+
+		if appointmentStatus != "" {
+			query = query.Where("status = ?", appointmentStatus)
 		}
-	}
 
-	if err := query.Find(&appointments).Error; err != nil {
+		// Filter by month and year if provided
+		if month != "" && year != "" {
+			// Parse month and year
+			m, errM := strconv.Atoi(month)
+			y, errY := strconv.Atoi(year)
+			if errM == nil && errY == nil {
+				start := time.Date(y, time.Month(m), 1, 0, 0, 0, 0, time.UTC)
+				end := start.AddDate(0, 1, 0)
+				query = query.Where("start_time >= ? AND start_time < ?", start, end)
+			}
+		}
+
+		if err := query.Find(&appointments).Error; err != nil {
+			errorChan <- err
+			return
+		}
+		appointmentsChan <- appointments
+	}()
+
+	select {
+	case appointments := <-appointmentsChan:
+		return c.JSON(appointments)
+	case err := <-errorChan:
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": err.Error(),
 		})
 	}
-	return c.JSON(appointments)
 }
 
 // GetAppointmentDetails retrieves details of a specific appointment
@@ -102,15 +118,27 @@ func GetAppointmentDetails(c *fiber.Ctx) error {
 		})
 	}
 
-	var appointment models.Appointment
-	if err := db.DB.Preload("Service").Preload("Provider").Preload("Customer").First(&appointment, appointmentID).Error; err != nil {
+	appointmentChan := make(chan models.Appointment)
+	errorChan := make(chan error)
+
+	go func() {
+		var appointment models.Appointment
+		if err := db.DB.Preload("Service").Preload("Provider").Preload("Customer").First(&appointment, appointmentID).Error; err != nil {
+			errorChan <- err
+			return
+		}
+		appointmentChan <- appointment
+	}()
+
+	select {
+	case appointment := <-appointmentChan:
+		return c.JSON(appointment)
+	case err := <-errorChan:
 		return c.Status(fiber.StatusNotFound).JSON(utils.ErrorResponse{
 			Message: "Appointment not found",
 			Error:   err.Error(),
 		})
 	}
-
-	return c.JSON(appointment)
 }
 
 // GetProviderUpcomingAppointments returns upcoming appointments for the logged-in provider
@@ -186,35 +214,51 @@ func GetProviderUpcomingAppointments(c *fiber.Ctx) error {
 		endDate = now.AddDate(0, 1, 0)
 	}
 
-	var appointments []models.Appointment
-
-	// Query for upcoming appointments
-	query := db.DB.
-		Preload("Service").
-		Preload("Customer").
-		Where("provider_id = ?", userID).
-		Where("start_time >= ?", startDate).
-		Where("start_time <= ?", endDate).
-		Where("status IN ?", []models.AppointmentStatus{models.StatusPending, models.StatusConfirmed})
-
-	// Sort by start time
-	query = query.Order("start_time asc")
-
-	// Apply limit
-	if limit > 0 {
-		query = query.Limit(limit)
+	type appointmentResult struct {
+		Appointments []models.Appointment
+		Err          error
 	}
 
-	// Execute the query
-	if err := query.Find(&appointments).Error; err != nil {
+	resultChan := make(chan appointmentResult)
+
+	go func() {
+		var result appointmentResult
+
+		// Query for upcoming appointments
+		query := db.DB.
+			Preload("Service").
+			Preload("Customer").
+			Where("provider_id = ?", userID).
+			Where("start_time >= ?", startDate).
+			Where("start_time <= ?", endDate).
+			Where("status IN ?", []models.AppointmentStatus{models.StatusPending, models.StatusConfirmed})
+
+		// Sort by start time
+		query = query.Order("start_time asc")
+
+		// Apply limit
+		if limit > 0 {
+			query = query.Limit(limit)
+		}
+
+		// Execute the query
+		if err := query.Find(&result.Appointments).Error; err != nil {
+			result.Err = err
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
+			"error": result.Err.Error(),
 		})
 	}
 
 	return c.JSON(fiber.Map{
-		"appointments": appointments,
-		"count":        len(appointments),
+		"appointments": result.Appointments,
+		"count":        len(result.Appointments),
 		"filter":       dateFilter,
 		"start_date":   startDate.Format("2006-01-02"),
 		"end_date":     endDate.Format("2006-01-02"),
@@ -318,50 +362,72 @@ func GetProviderAppointmentHistory(c *fiber.Ctx) error {
 		startDate = time.Time{} // Beginning of time
 	}
 
-	var appointments []models.Appointment
-	var total int64
-
-	// Count total matching appointments
-	countQuery := db.DB.Model(&models.Appointment{}).
-		Where("provider_id = ?", userID).
-		Where("status IN ?", statuses)
-
-	// Apply date filter if not "all"
-	if dateRange != "all" {
-		countQuery = countQuery.Where("end_time >= ? AND end_time <= ?", startDate, endDate)
+	type appointmentResult struct {
+		Appointments []models.Appointment
+		Total        int64
+		Err          error
 	}
 
-	countQuery.Count(&total)
+	resultChan := make(chan appointmentResult)
 
-	// Query for appointment history
-	query := db.DB.
-		Preload("Service").
-		Preload("Customer").
-		Where("provider_id = ?", userID).
-		Where("status IN ?", statuses)
+	go func() {
+		var result appointmentResult
 
-	// Apply date filter if not "all"
-	if dateRange != "all" {
-		query = query.Where("end_time >= ? AND end_time <= ?", startDate, endDate)
-	}
+		// Count total matching appointments
+		countQuery := db.DB.Model(&models.Appointment{}).
+			Where("provider_id = ?", userID).
+			Where("status IN ?", statuses)
 
-	// Apply ordering, pagination
-	if err := query.
-		Order("end_time desc").
-		Offset(offset).
-		Limit(limit).
-		Find(&appointments).Error; err != nil {
+		// Apply date filter if not "all"
+		if dateRange != "all" {
+			countQuery = countQuery.Where("end_time >= ? AND end_time <= ?", startDate, endDate)
+		}
+
+		if err := countQuery.Count(&result.Total).Error; err != nil {
+			result.Err = err
+			resultChan <- result
+			return
+		}
+
+		// Query for appointment history
+		query := db.DB.
+			Preload("Service").
+			Preload("Customer").
+			Where("provider_id = ?", userID).
+			Where("status IN ?", statuses)
+
+		// Apply date filter if not "all"
+		if dateRange != "all" {
+			query = query.Where("end_time >= ? AND end_time <= ?", startDate, endDate)
+		}
+
+		// Apply ordering, pagination
+		if err := query.
+			Order("end_time desc").
+			Offset(offset).
+			Limit(limit).
+			Find(&result.Appointments).Error; err != nil {
+			result.Err = err
+			resultChan <- result
+			return
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
+			"error": result.Err.Error(),
 		})
 	}
 
 	return c.JSON(fiber.Map{
-		"appointments": appointments,
-		"total":        total,
+		"appointments": result.Appointments,
+		"total":        result.Total,
 		"page":         page,
 		"limit":        limit,
-		"pages":        (total + int64(limit) - 1) / int64(limit), // Ceiling division
+		"pages":        (result.Total + int64(limit) - 1) / int64(limit), // Ceiling division
 		"range":        dateRange,
 		"status":       status,
 	})
@@ -429,52 +495,64 @@ func UpdateAppointmentStatus(c *fiber.Ctx) error {
 		})
 	}
 
-	// Find the appointment
-	var appointment models.Appointment
-	if err := db.DB.First(&appointment, appointmentID).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Appointment not found",
-		})
+	type updateResult struct {
+		Appointment models.Appointment
+		Provider    models.User
+		Customer    models.User
+		Err         error
 	}
 
-	// Check if the provider owns this appointment
-	if appointment.ProviderID != userID && role != "admin" {
-		//Get Provider ID by receptionistID
-		var provider models.ReceptionistSettings
-		if err := db.DB.First(&provider, "receptionist_id = ?", userID).Error; err != nil {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"error": "Provider not found",
-			})
+	resultChan := make(chan updateResult)
+
+	go func() {
+		var result updateResult
+
+		// Find the appointment
+		if err := db.DB.Preload("Service").First(&result.Appointment, appointmentID).Error; err != nil {
+			result.Err = fmt.Errorf("appointment not found: %v", err)
+			resultChan <- result
+			return
 		}
-		if appointment.ProviderID != provider.ProviderID {
-			// Check if the appointment belongs to the provider
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error": "You can only update your own appointments",
-			})
+
+		// Check if the provider owns this appointment
+		if result.Appointment.ProviderID != userID && role != "admin" {
+			//Get Provider ID by receptionistID
+			var provider models.ReceptionistSettings
+			if err := db.DB.First(&provider, "receptionist_id = ?", userID).Error; err != nil {
+				result.Err = fmt.Errorf("provider not found: %v", err)
+				resultChan <- result
+				return
+			}
+			if result.Appointment.ProviderID != provider.ProviderID {
+				// Check if the appointment belongs to the provider
+				result.Err = fmt.Errorf("you can only update your own appointments")
+				resultChan <- result
+				return
+			}
 		}
-	}
 
-	// Update the status
-	if err := appointment.UpdateStatus(db.DB, newStatus); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
-		})
-	}
+		// Update the status
+		if err := result.Appointment.UpdateStatus(db.DB, newStatus); err != nil {
+			result.Err = err
+			resultChan <- result
+			return
+		}
 
-	// find provider and customer and send email
-	var provider models.User
-	if err := db.DB.First(&provider, appointment.ProviderID).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Provider not found",
-		})
-	}
-	var customer models.User
-	if err := db.DB.First(&customer, appointment.CustomerID).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Customer not found",
-		})
-	}
-	emailBody := `
+		// find provider and customer
+		if err := db.DB.First(&result.Provider, result.Appointment.ProviderID).Error; err != nil {
+			result.Err = fmt.Errorf("provider not found: %v", err)
+			resultChan <- result
+			return
+		}
+
+		if err := db.DB.First(&result.Customer, result.Appointment.CustomerID).Error; err != nil {
+			result.Err = fmt.Errorf("customer not found: %v", err)
+			resultChan <- result
+			return
+		}
+
+		// Send email notification
+		emailBody := `
 		<!DOCTYPE html>
 		<html>
 		<head>
@@ -498,16 +576,48 @@ func UpdateAppointmentStatus(c *fiber.Ctx) error {
 		</body>
 		</html>
 			`
-	emailBody = fmt.Sprintf(emailBody, customer.Name, provider.Name, newStatus, appointment.Service.Name, appointment.StartTime.Format("2006-01-02 15:04"), appointment.EndTime.Format("2006-01-02 15:04"), newStatus)
-	if err := utils.SendEmail(customer.Email, "Appointment Status Update", emailBody); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to send email notification",
-		})
+		emailBody = fmt.Sprintf(emailBody, result.Customer.Name, result.Provider.Name, newStatus,
+			result.Appointment.Service.Name, result.Appointment.StartTime.Format("2006-01-02 15:04"),
+			result.Appointment.EndTime.Format("2006-01-02 15:04"), newStatus)
+
+		if err := utils.SendEmail(result.Customer.Email, "Appointment Status Update", emailBody); err != nil {
+			result.Err = fmt.Errorf("failed to send email notification: %v", err)
+			resultChan <- result
+			return
+		}
+
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		if strings.Contains(result.Err.Error(), "Appointment not found") {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": result.Err.Error(),
+			})
+		} else if strings.Contains(result.Err.Error(), "Provider not found") ||
+			strings.Contains(result.Err.Error(), "Customer not found") {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": result.Err.Error(),
+			})
+		} else if strings.Contains(result.Err.Error(), "You can only update your own appointments") {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": result.Err.Error(),
+			})
+		} else if strings.Contains(result.Err.Error(), "Failed to send email") {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": result.Err.Error(),
+			})
+		} else {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": result.Err.Error(),
+			})
+		}
 	}
 
 	return c.JSON(fiber.Map{
 		"message":     "Appointment status updated successfully",
-		"appointment": appointment,
+		"appointment": result.Appointment,
 	})
 }
 
@@ -565,9 +675,9 @@ func RescheduleAppointment(c *fiber.Ctx) error {
 		StartTime string `json:"start_time"`
 	}
 
-	if err := c.BodyParser(&rescheduleData); err != nil {
+	if parseErr := c.BodyParser(&rescheduleData); parseErr != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": err.Error(),
+			"error": "Failed to parse request body",
 		})
 	}
 
@@ -587,111 +697,133 @@ func RescheduleAppointment(c *fiber.Ctx) error {
 		})
 	}
 
-	// Find the appointment
-	var appointment models.Appointment
-	if err := db.DB.First(&appointment, appointmentID).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Appointment not found",
-		})
+	type rescheduleResult struct {
+		Appointment models.Appointment
+		Service     models.Service
+		Provider    models.User
+		Customer    models.User
+		Err         error
+		StatusCode  int
 	}
 
-	// Find service duration to calculate end time
-	var service models.Service
-	if err := db.DB.First(&service, appointment.ServiceID).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Service not found",
-		})
-	}
-	endTime := startTime.Add(time.Duration(service.Duration) * time.Minute)
+	resultChan := make(chan rescheduleResult)
 
-	// Check if the provider owns this appointment
-	if appointment.ProviderID != userID && role != "admin" {
-		var provider models.ReceptionistSettings
-		if err := db.DB.First(&provider, "receptionist_id = ?", userID).Error; err != nil {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"error": "Provider not found",
-			})
+	go func() {
+		var result rescheduleResult
+
+		// Find the appointment
+		if err := db.DB.First(&result.Appointment, appointmentID).Error; err != nil {
+			result.Err = fmt.Errorf("appointment not found")
+			result.StatusCode = fiber.StatusNotFound
+			resultChan <- result
+			return
 		}
-		if appointment.ProviderID != provider.ProviderID {
-			// Check if the appointment belongs to the provider
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error": "You can only update your own appointments",
-			})
+
+		// Find service duration to calculate end time
+		if err := db.DB.First(&result.Service, result.Appointment.ServiceID).Error; err != nil {
+			result.Err = fmt.Errorf("service not found")
+			result.StatusCode = fiber.StatusNotFound
+			resultChan <- result
+			return
 		}
-	}
+		endTime := startTime.Add(time.Duration(result.Service.Duration) * time.Minute)
 
-	// Check if appointment is in a status that can be rescheduled
-	if appointment.Status != models.StatusPending && appointment.Status != models.StatusConfirmed {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Only pending or confirmed appointments can be rescheduled",
-		})
-	}
+		// Check if the provider owns this appointment
+		if result.Appointment.ProviderID != userID && role != "admin" {
+			var receptionistSettings models.ReceptionistSettings
+			if err := db.DB.First(&receptionistSettings, "receptionist_id = ?", userID).Error; err != nil {
+				result.Err = fmt.Errorf("provider not found")
+				result.StatusCode = fiber.StatusNotFound
+				resultChan <- result
+				return
+			}
+			if result.Appointment.ProviderID != receptionistSettings.ProviderID {
+				// Check if the appointment belongs to the provider
+				result.Err = fmt.Errorf("you can only update your own appointments")
+				result.StatusCode = fiber.StatusForbidden
+				resultChan <- result
+				return
+			}
+		}
 
-	// Check for scheduling conflicts
-	var conflictCount int64
-	db.DB.Model(&models.Appointment{}).
-		Where("provider_id = ? AND id != ?", userID, appointmentID).
-		Where("status IN ?", []models.AppointmentStatus{models.StatusPending, models.StatusConfirmed}).
-		Where("(start_time < ? AND end_time > ?) OR (start_time >= ? AND start_time < ?)",
-			endTime, startTime, startTime, endTime).
-		Count(&conflictCount)
+		// Check if appointment is in a status that can be rescheduled
+		if result.Appointment.Status != models.StatusPending && result.Appointment.Status != models.StatusConfirmed {
+			result.Err = fmt.Errorf("only pending or confirmed appointments can be rescheduled")
+			result.StatusCode = fiber.StatusBadRequest
+			resultChan <- result
+			return
+		}
 
-	if conflictCount > 0 {
-		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-			"error": "The requested time slot conflicts with existing appointments",
-		})
-	}
+		// Check for scheduling conflicts
+		var conflictCount int64
+		db.DB.Model(&models.Appointment{}).
+			Where("provider_id = ? AND id != ?", userID, appointmentID).
+			Where("status IN ?", []models.AppointmentStatus{models.StatusPending, models.StatusConfirmed}).
+			Where("(start_time < ? AND end_time > ?) OR (start_time >= ? AND start_time < ?)",
+				endTime, startTime, startTime, endTime).
+			Count(&conflictCount)
 
-	// Update the appointment times
-	appointment.StartTime = startTime
-	duration := service.Duration
-	total_duration := duration + service.BufferTime
-	isWorkingHour, err := utils.CheckWorkingDayAndHours(appointment.ProviderID, appointment.StartTime)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(utils.ErrorResponse{
-			Message: "Error checking working hours",
-			Error:   err.Error(),
-		})
-	}
-	// Check if the appointment is during break time
-	fmt.Println("Checking break time...")
-	if !isWorkingHour {
-		return c.Status(fiber.StatusConflict).JSON(utils.ErrorResponse{
-			Message: "Appointment is outside working hours or during break",
-		})
-	}
-	available, err := utils.CheckAvailability(appointment.ProviderID, appointment.StartTime, total_duration)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to check availability",
-		})
-	}
-	if !available {
-		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-			"error": "The requested time slot conflicts with existing appointments",
-		})
-	}
-	appointment.EndTime = startTime.Add(time.Duration(service.Duration) * time.Minute)
-	appointment.Status = models.StatusPending
-	if err := db.DB.Save(&appointment).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to reschedule appointment",
-		})
-	}
-	// find provider and customer and send email
-	var provider models.User
-	if err := db.DB.First(&provider, appointment.ProviderID).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Provider not found",
-		})
-	}
-	var customer models.User
-	if err := db.DB.First(&customer, appointment.CustomerID).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Customer not found",
-		})
-	}
-	emailBody := `
+		if conflictCount > 0 {
+			result.Err = fmt.Errorf("the requested time slot conflicts with existing appointments")
+			result.StatusCode = fiber.StatusConflict
+			resultChan <- result
+			return
+		}
+
+		// Update the appointment times
+		result.Appointment.StartTime = startTime
+		duration := result.Service.Duration
+		total_duration := duration + result.Service.BufferTime
+		isWorkingHour, err := utils.CheckWorkingDayAndHours(result.Appointment.ProviderID, result.Appointment.StartTime)
+		if err != nil {
+			result.Err = fmt.Errorf("error checking working hours: %v", err)
+			result.StatusCode = fiber.StatusInternalServerError
+			resultChan <- result
+			return
+		}
+		// Check if the appointment is during break time
+		fmt.Println("Checking break time...")
+		if !isWorkingHour {
+			result.Err = fmt.Errorf("appointment is outside working hours or during break")
+			result.StatusCode = fiber.StatusConflict
+			resultChan <- result
+			return
+		}
+		available, err := utils.CheckAvailability(result.Appointment.ProviderID, result.Appointment.StartTime, total_duration)
+		if err != nil {
+			result.Err = fmt.Errorf("failed to check availability: %v", err)
+			result.StatusCode = fiber.StatusInternalServerError
+			resultChan <- result
+			return
+		}
+		if !available {
+			result.Err = fmt.Errorf("the requested time slot conflicts with existing appointments")
+			result.StatusCode = fiber.StatusConflict
+			resultChan <- result
+			return
+		}
+		result.Appointment.EndTime = startTime.Add(time.Duration(result.Service.Duration) * time.Minute)
+		result.Appointment.Status = models.StatusPending
+		if dbErr := db.DB.Save(&result.Appointment).Error; dbErr != nil {
+			result.Err = fmt.Errorf("failed to reschedule appointment: %v", err)
+			result.StatusCode = fiber.StatusInternalServerError
+			resultChan <- result
+			return
+		}
+		// find provider and customer and send email
+		if dbErr := db.DB.First(&result.Provider, result.Appointment.ProviderID).Error; dbErr != nil {
+			result.Err = fmt.Errorf("provider not found")
+			result.StatusCode = fiber.StatusNotFound
+			resultChan <- result
+			return
+		}
+		if dbErr := db.DB.First(&result.Customer, result.Appointment.CustomerID).Error; dbErr != nil {
+			result.Err = fmt.Errorf("customer not found")
+			result.StatusCode = fiber.StatusNotFound
+			resultChan <- result
+			return
+		}
+		emailBody := `
 		<!DOCTYPE html>
 		<html>
 		<head>
@@ -701,25 +833,35 @@ func RescheduleAppointment(c *fiber.Ctx) error {
 		</head>
 		<body>
 			<h1>Appointment Rescheduled</h1>
-			<p>Dear ` + customer.Name + `,</p>
-			<p>Your appointment with ` + provider.Name + ` has been rescheduled to the following times:</p>
-			<p>Start Time: ` + appointment.StartTime.Format("2006-01-02 15:04:05") + `</p>
-			<p>End Time: ` + appointment.EndTime.Format("2006-01-02 15:04:05") + `</p>
-			<p>Best regards,<br>` + provider.Name + `</p>
+			<p>Dear ` + result.Customer.Name + `,</p>
+			<p>Your appointment with ` + result.Provider.Name + ` has been rescheduled to the following times:</p>
+			<p>Start Time: ` + result.Appointment.StartTime.Format("2006-01-02 15:04:05") + `</p>
+			<p>End Time: ` + result.Appointment.EndTime.Format("2006-01-02 15:04:05") + `</p>
+			<p>Best regards,<br>` + result.Provider.Name + `</p>
 		</body>
 		</html>
 	`
-	err = utils.SendEmail(customer.Email, "Appointment Rescheduled", emailBody)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to send email",
+		err = utils.SendEmail(result.Customer.Email, "Appointment Rescheduled", emailBody)
+		if err != nil {
+			result.Err = fmt.Errorf("failed to send email: %v", err)
+			result.StatusCode = fiber.StatusInternalServerError
+			resultChan <- result
+			return
+		}
+
+		fmt.Println("Email sent to:", result.Customer.Email)
+		resultChan <- result
+	}()
+
+	result := <-resultChan
+	if result.Err != nil {
+		return c.Status(result.StatusCode).JSON(fiber.Map{
+			"error": result.Err.Error(),
 		})
 	}
 
-	fmt.Println("Email sent to:", customer.Email)
-
 	return c.JSON(fiber.Map{
 		"message":     "Appointment rescheduled successfully",
-		"appointment": appointment,
+		"appointment": result.Appointment,
 	})
 }
