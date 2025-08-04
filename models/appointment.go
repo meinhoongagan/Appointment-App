@@ -42,7 +42,7 @@ type Appointment struct {
 	Customer     User              `json:"customer" gorm:"foreignKey:CustomerID"`
 }
 
-func (a *Appointment) BeforeCreate(tx *gorm.DB) error {
+func (a *Appointment) BeforeCreate(_ *gorm.DB) error {
 	if a.Status == "" {
 		a.Status = StatusPending
 	}
