@@ -19,7 +19,7 @@ type Service struct {
 	DiscountedPrice float64       `json:"discounted_price" gorm:"-"`
 }
 
-func (s *Service) AfterFind(tx *gorm.DB) (err error) {
+func (s *Service) AfterFind(_ *gorm.DB) (err error) {
 	s.DiscountedPrice = s.Cost - (s.Cost * s.Discount / 100)
 	return
 }

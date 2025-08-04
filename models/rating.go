@@ -20,7 +20,7 @@ type Review struct {
 }
 
 // BeforeCreate hook to validate rating
-func (r *Review) BeforeCreate(tx *gorm.DB) error {
+func (r *Review) BeforeCreate(_ *gorm.DB) error {
 	// Ensure rating is between 1.0 and 5.0
 	if r.Rating < 1.0 {
 		r.Rating = 1.0

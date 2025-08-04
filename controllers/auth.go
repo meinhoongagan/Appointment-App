@@ -550,7 +550,7 @@ func RefreshToken(c *fiber.Ctx) error {
 		secret = "your_secret_key"
 	}
 
-	token, err := jwt.Parse(refreshRequest.RefreshToken, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.Parse(refreshRequest.RefreshToken, func(_ *jwt.Token) (interface{}, error) {
 		return []byte(secret), nil
 	})
 
